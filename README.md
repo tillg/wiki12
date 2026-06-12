@@ -37,6 +37,36 @@ the foundational system end to end. See its spec artifacts:
 | CLI | `wiki12` (Node/TypeScript) |
 | Orchestration | Docker Compose |
 
+## Developer skills
+
+This repo ships a set of [agent skills](https://github.com/mattpocock/skills) by
+[Matt Pocock](https://github.com/mattpocock) that help drive disciplined
+engineering with AI coding agents. They're installed for **both** agents in the
+same `SKILL.md` format, just in each agent's conventional location:
+
+- **Claude Code** → [`.claude/skills/`](.claude/skills) (auto-discovered when the repo is opened)
+- **OpenAI Codex** → [`.agents/skills/`](.agents/skills) (Codex scans `$CWD/.agents/skills`)
+
+Invoke a skill in your agent with its slash command, e.g. `/tdd`.
+
+| Skill | What it does |
+|---|---|
+| `/grill-with-docs` | Relentless grilling session that stress-tests your plan against the project's domain model and updates docs (CONTEXT.md, ADRs) inline as decisions are made. |
+| `/tdd` | Test-driven development with a red → green → refactor loop; test-first feature work and bug fixes. |
+| `/diagnose` | Disciplined diagnosis loop for hard bugs and perf regressions: reproduce → minimise → hypothesise → instrument → fix → regression-test. |
+| `/to-prd` | Turns the current conversation into a **PRD** and publishes it to the issue tracker. |
+| `/zoom-out` | Asks the agent to step back and explain how a piece of code fits the bigger picture. |
+| `/improve-codebase-architecture` | Finds architecture/refactoring "deepening" opportunities, guided by CONTEXT.md and ADRs. |
+
+> **What's a PRD?** A *Product Requirements Document* — a short write-up that
+> says, in plain language, **what** we're building and **why**, who it's for, and
+> what "done" looks like (problem, solution, user stories, key decisions). It's
+> the shared description everyone agrees on *before* code gets written, so the
+> agent builds the thing you actually meant.
+
+Skills are vendored copies; to update them, re-pull from
+[`mattpocock/skills`](https://github.com/mattpocock/skills).
+
 ## License
 
 TBD.
