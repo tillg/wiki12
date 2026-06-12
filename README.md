@@ -1,10 +1,11 @@
 # wiki12
 
 A wiki-style application built on **A12** (mgm technology partners). It manages
-two kinds of content — **Pages** and typed **Entities** (person, film,
-location, …) — through a React/TypeScript web client, a `wiki12` command-line
-interface, and the standard A12 Data Service backend, with PostgreSQL for
-persistence. The whole system runs under Docker Compose.
+**content items** of typed kinds over one mechanism: a built-in **Page** type
+and user-defined **Entities** (person, film, location, …). Access is through a
+React/TypeScript web client, a `wiki12` command-line interface, and the standard
+A12 Data Service backend, with PostgreSQL for persistence. The whole system runs
+under Docker Compose.
 
 ## Status
 
@@ -18,10 +19,15 @@ the foundational system end to end. See its spec artifacts:
 
 ## Core concepts
 
-- **Page** — basic wiki item: `title`, `slug` (derived from the title),
-  technical ID, markdown `body`.
-- **Entity** — typed item with a globally unique namespaced slug, e.g.
-  `person:till_gartner`.
+- **Content item** — the single underlying mechanism: a typed, versioned item
+  with a technical ID and a namespaced slug `<type>:<name>`. "Page" and "Entity"
+  are vocabulary over this one mechanism, not separate implementations.
+- **Page** — a content item of the built-in **`page`** type: `title`, markdown
+  `body`, technical ID, slug `page:albert_einstein`. The `page` type always
+  exists and is the default slug namespace (a bare `albert_einstein` resolves as
+  `page:albert_einstein`).
+- **Entity** — a content item of a user-defined type, with a globally unique
+  namespaced slug, e.g. `person:till_gartner`.
 - **Data model / form model** — content structure is model-driven via A12; form
   models are auto-generated when not provided.
 - **Migrations** — TypeScript scripts upgrade existing instances when a data

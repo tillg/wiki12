@@ -9,11 +9,37 @@ Goal: before writing any code, learn how A12 actually works and capture the
 findings so the rest of the plan rests on facts, not assumptions. Record results
 in `specs/changes/basic_setup/findings-a12.md`.
 
+> **Sources for this research:**
+> - **A12 source code** — the A12 products are on GitHub:
+>   <https://github.com/orgs/mgm-tp/repositories?q=a12>
+> - **Concepts / overview / docs** — <https://geta12.com/#/docs/2025.06/ext5/overall/what_is_a12>
+>   ⚠️ `geta12.com` is a JavaScript-heavy **Single Page App** — plain HTTP fetch
+>   won't return the rendered content. Use a browser tool (Playwright MCP) to
+>   read it.
+
+- [ ] **Vendor the full A12 documentation into the repo (deliverable)**: scrape
+      the entire geta12.com documentation set (version **2025.06**, the `ext5`
+      docs linked above) and commit it under **`docs/a12/`**, so the platform
+      reference lives in-repo and survives the SPA / future site changes. Because
+      the site is a JS SPA, render each page with the Playwright MCP and save it
+      as Markdown (or HTML), **preserving the navigation/section tree** so the
+      mirror is browsable. Capture an `index.md` with the doc tree and the
+      source URL + scrape date. This in-repo mirror is the durable reference the
+      rest of Step 0's findings cite.
+
 - [ ] **Data & form models**: How do we *author*, *validate*, and *register* A12
       data models and form models? What is the file format / schema, and what
       tooling validates them (modeler, CLI, build step)?
-- [ ] **Default form model generation**: Does A12 generate a default form model
-      from a data model, and where (server vs. client)? How is it triggered?
+- [ ] **Server-side extensibility — the central go/no-go (ADR-0002)**: Can the
+      stock Data Service run custom server-side logic/queries (computed fields /
+      write hooks / interceptors / custom search)? Slug derivation, slug
+      resolution, and unified substring search all depend on this. Resolve it as
+      a single gate: YES → logic lives in the Data Service; NO → a thin façade in
+      front of it owns all three and A12 is pure storage.
+- [ ] **Default form model generation**: Confirm A12 generates and **stores** a
+      default form model from a data model server-side, and that the client form
+      engine renders from (data model + form model + document) with client-side
+      validation. Where is generation triggered, and how is it managed/persisted?
 - [ ] **Data Service**: How and where do we obtain the A12 Data Service (Java)?
       Distribution (Maven artifact / Docker image / source), license/access,
       version, and its config + persistence wiring to PostgreSQL.
@@ -33,12 +59,16 @@ in `specs/changes/basic_setup/findings-a12.md`.
 - [ ] **Versioning & migration hooks**: How does A12 represent data-model
       versions on instances, and what is the supported path to migrate instances
       across versions (informs the TS migration runner)?
-- [ ] **Access**: Confirm how we get A12 artifacts and docs (registry creds,
-      repo access at <https://github.com/mgm-tp>, quick-start reachability).
+- [ ] **Access**: Confirm how we get A12 artifacts and docs — the A12 product
+      repos (<https://github.com/orgs/mgm-tp/repositories?q=a12>), any registry
+      creds for published packages, and reachability of the geta12.com docs (see
+      Sources note above).
 - [ ] **Open questions log**: capture anything unresolved as explicit risks.
 - [ ] **REVIEW GATE**: present `findings-a12.md` to the user and walk through it
-      together. Do not start Step 1 until the user has reviewed and approved the
-      findings (and any plan adjustments they imply).
+      together. The headline output is the **extensibility go/no-go** — it selects
+      the architecture (Data Service vs. façade per ADR-0002). Do not start Step 1
+      until the user has reviewed and approved the findings (and any plan
+      adjustments they imply).
 
 ## 1. Project scaffolding & infrastructure
 
@@ -59,17 +89,24 @@ in `specs/changes/basic_setup/findings-a12.md`.
       `type`, `slug`, `id`, markdown description + type-specific fields), v1.
 - [ ] Register models with the Data Service; confirm generic CRUD endpoints
       respond for each model.
-- [ ] Enforce slug rules server-side: slugs are read-only and derived from each
-      model's **key fields** (page: title; entity: `type:` + key fields, e.g.
-      person first + last name); (re)computed on create and on key-field change;
-      page slugs unique, entity slugs globally unique.
-- [ ] Have the Data Service return the old → new slug when a write changes it,
-      so clients can notify the user.
+- [ ] Enforce slug rules server-side (or in the façade, per the Step 0 gate):
+      slugs are read-only, **namespaced `<type>:<name>`** (page: from title →
+      `page:<name>`; entity: from the type's key fields), lowercase `[a-z0-9_]`
+      with `_` separator and `:` delimiter; `page` is the default namespace.
+      (Re)computed on create and on key-field change; **globally unique** with a
+      **sticky `_N` suffix** on collision (fixed at creation).
+- [ ] Resolve items by **either Technical ID or slug** (try-ID-then-slug; reserve
+      the ID grammar so slugs can't collide with it; bare names default to
+      `page:`).
+- [ ] Have the Data Service return the old → new slug when a write changes it, so
+      clients can notify the user; the old slug then 404s.
 
 ## 3. Form models
 
-- [ ] Confirm default form model generation works for each data model (forms
-      render with no explicit form model).
+- [ ] Confirm server-side default form model generation works for each data
+      model (forms render with no explicit form model), with the form model
+      stored/managed server-side and the client form engine rendering from (data
+      model + form model + document).
 - [ ] Add an explicit form model for `page` (markdown body editor layout) as the
       reference example.
 
@@ -77,7 +114,8 @@ in `specs/changes/basic_setup/findings-a12.md`.
 
 - [ ] Scaffold the React/TS app from the A12 widgets quick start; point it at the
       Data Service.
-- [ ] Implement **search** (pages + entities) over title/slug/body.
+- [ ] Implement **search** against the unified search endpoint (all content over
+      title/slug/body), rendering the typed results (kind/type, slug, snippet).
 - [ ] Implement **read/view** with markdown rendering.
 - [ ] Implement **create/edit** using form models (markdown editor for bodies);
       render the slug as read-only.
@@ -91,10 +129,15 @@ in `specs/changes/basic_setup/findings-a12.md`.
 ## 5. `wiki12` CLI (Node/TS)
 
 - [ ] Scaffold the CLI with a command framework and global `-h/--help`.
-- [ ] `wiki12 page create|read|update|delete|search`.
-- [ ] `wiki12 entity create|read|update|delete|search --type <type>`.
-- [ ] `wiki12 model create|read|update` (entity data models).
-- [ ] `wiki12 form create|read|update` (form models).
+- [ ] `wiki12 search <query> [--kind ...] [--type ...]` (unified search).
+- [ ] `wiki12 page create|read|update|delete|search` (sugar for `entity --type
+      page`); accept either Technical ID or slug as the item argument.
+- [ ] `wiki12 entity create|read|update|delete|search --type <type>`; accept
+      either Technical ID or slug.
+- [ ] `wiki12 model create|read|update <type>` — data models for any type,
+      `page` included.
+- [ ] `wiki12 form create|read|update <type>` — form models for any type, `page`
+      included.
 - [ ] Ensure every command and subcommand has `-h` documentation; add a top-level
       usage overview.
 - [ ] When an `update` changes an item's slug, print a **clear message** stating
@@ -105,13 +148,16 @@ in `specs/changes/basic_setup/findings-a12.md`.
 ## 6. Migrations
 
 - [ ] Define the migration convention: `migrations/<type>/<from>-<to>.ts`
-      exporting a transform function.
+      exporting a single-document transform `(doc at vN) → (doc at vN+1)`.
 - [ ] Implement the migration runner in the CLI: `wiki12 migrate <type>
-      --from <v> --to <v> [--dry-run]`.
-- [ ] Provide a worked example: bump one entity data model to v2 and ship its
-      `1-2.ts` migration.
-- [ ] Verify: `--dry-run` reports affected instances; a real run upgrades all v1
-      instances to v2 with a summary report and no data loss.
+      --from <v> --to <v> [--dry-run]` (runner owns iteration, IO, reporting).
+- [ ] **Gate the version bump**: `wiki12 model update <type> --version N` refuses
+      unless `migrations/<type>/<N-1>-<N>.ts` exists (`page` included).
+- [ ] Provide a worked example: bump one data model to v2 and ship its `1-2.ts`
+      migration.
+- [ ] Verify: `--dry-run` reports affected instances **and the old→new slug
+      manifest** when key fields change; a real run upgrades all v1 instances to
+      v2 with a summary report and no data loss.
 
 ## 7. Seed & verification
 

@@ -3,10 +3,11 @@
 ## Summary
 
 Establish the foundational **wiki12** system: an A12-based wiki application that
-manages two kinds of content — **Pages** and typed **Entities** (person, film,
-location, …) — through a React/TypeScript web client, a `wiki12` command-line
-interface, and the standard A12 Data Service backend, all running under Docker
-Compose with a PostgreSQL database.
+manages **content items** over one mechanism — a built-in **Page** type and
+user-defined typed **Entities** (person, film, location, …) — through a
+React/TypeScript web client, a `wiki12` command-line interface, and the standard
+A12 Data Service backend, all running under Docker Compose with a PostgreSQL
+database.
 
 This is a greenfield change. There is no existing codebase; `basic_setup`
 bootstraps the entire system end to end and is the seed from which the future
@@ -54,15 +55,19 @@ flowchart TB
 
 ### In scope
 
-- **Content model**: `Page` (title, slug, technical ID, markdown body) and
-  `Entity` (typed, technical ID, namespaced slug like `person:till_gartner`,
-  markdown fields).
+- **Content model**: one **content item** mechanism (`{ type, slug, id,
+  fields }`). Every item has a namespaced slug `<type>:<name>`. `Page` is the
+  built-in type (`page:albert_einstein`; title, markdown body) and the default
+  slug namespace; `Entity` types (`person:till_gartner`, …) are user-defined
+  types over the same mechanism, with type-specific + markdown fields.
 - **A12 data models** for pages and each entity type, with **form models**
   (default-generated when not explicitly provided).
 - **Web client**: search, create, edit, delete for both Pages and Entities,
   built from scratch with A12 widgets per the A12 quick start.
-- **`wiki12` CLI**: CRUD for pages and entities; Create/Read/Update for entity
-  and form models; `-h` help on every command.
+- **`wiki12` CLI**: CRUD for pages and entities; a unified `search` across all
+  content (with per-kind/per-type filters); Create/Read/Update for data and form
+  models (`page` is a first-class managed type like any entity type); `-h` help
+  on every command. Items are addressable by either Technical ID or slug.
 - **Migrations**: TypeScript scripts that migrate page/entity instances across
   data-model versions.
 - **Deployment**: `docker compose` with the Java A12 Data Service, PostgreSQL,
@@ -90,11 +95,16 @@ After `basic_setup` is applied:
 
 ## Risks & assumptions
 
+- **A12 server-side extensibility (the central gate)**: the slug logic, slug
+  resolution, and substring search all assume the stock A12 Data Service can run
+  custom server-side logic/queries. Step 0 resolves this as a single go/no-go; if
+  A12 is a closed black box, a thin façade service owns those behaviors (see
+  ADR-0002).
 - **A12 familiarity**: the team follows the A12 widgets quick start; the data
   model / form model split and the Data Service CRUD API are taken as given by
-  the platform.
+  the platform. Form models are generated/stored/managed server-side and rendered
+  by a client-side form engine — verified in Step 0.
 - **Typo correction**: a Page slug is derived from its **title** (the brief said
   "derived from the slug", read as a typo).
-- **Migration runtime**: TypeScript migrations imply a Node-based migration
-  runner; how it is invoked (CLI vs. server hook) is decided in
-  `architecture.md`.
+- **Migration runtime**: TypeScript migrations run in a Node-based runner hosted
+  by the `wiki12` CLI (decided — see ADR-0003).
