@@ -1,0 +1,25 @@
+# Agent / scratch artifacts
+tmp/
+
+# Node
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+.pnpm-debug.log*
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Java / build
+target/
+*.class
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
