@@ -24,10 +24,17 @@ the specs will reuse.
 
 - **Technical ID** — opaque, system-generated, stable, unique per item. Used for
   references and persistence; never shown as the primary human handle.
-- **Slug** — the human-facing handle.
-  - Page slug: derived from the title, URL-friendly (e.g. `till-gartner`).
-  - Entity slug: **namespaced** as `<type>:<name>`, e.g. `person:till_gartner`.
-    Entity slugs are **globally unique**.
+- **Slug** — the human-facing handle. It is **read-only**: the system creates
+  and maintains it; users never edit it directly. A slug is **derived from the
+  item's key fields**:
+  - Page slug: derived from the `title`, URL-friendly (e.g. `till-gartner`).
+  - Entity slug: **namespaced** as `<type>:<name>`, where the `<name>` part is
+    derived from that type's key fields (e.g. a person's first + last name →
+    `person:till_gartner`). Entity slugs are **globally unique**.
+- **Slug changes are surfaced.** Because the slug tracks the key fields, editing
+  a key field can change the slug. Whenever that happens, the system gives the
+  user a **clear statement** that the slug changed — both in the web UI and in
+  the `wiki12` CLI.
 
 ```mermaid
 flowchart LR
@@ -116,7 +123,10 @@ flowchart LR
 - **Entity** — typed content item with a namespaced unique slug.
 - **Entity type** — category of entity (`person`, `film`, `location`, …).
 - **Technical ID** — opaque unique system identifier.
-- **Slug** — human-facing handle; namespaced (`type:name`) for entities.
+- **Slug** — read-only, system-derived handle (from key fields); namespaced
+  (`type:name`) for entities; slug changes are reported to the user.
+- **Key fields** — the fields a slug is derived from (page: title; person:
+  first + last name; per entity type).
 - **Data model** — versioned structural definition of a content type.
 - **Form model** — presentation/editing definition; auto-generated if absent.
 - **Migration** — TypeScript script upgrading instances across model versions.

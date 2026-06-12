@@ -65,10 +65,17 @@ box, and custom layouts are an optional refinement.
 ### 3. Slugs and identity
 
 - Technical ID is server-assigned on create.
-- Page slug derived from title (slugified), uniqueness enforced.
-- Entity slug is `type:name`, globally unique — enforced as a unique constraint
-  / validation at the Data Service boundary so both web and CLI get the same
-  rule.
+- Slugs are **read-only and system-derived** — never user-editable. Each model
+  declares its **key fields**; the Data Service computes the slug from them
+  (page: `title`; entity: `type:` + the type's key fields, e.g. a person's
+  first + last name → `person:till_gartner`).
+- The slug is **(re)computed server-side** on create and whenever a key field
+  changes, so derivation and uniqueness are enforced once at the Data Service
+  boundary and both web and CLI get the same rule. Page slugs are unique; entity
+  slugs are globally unique.
+- **Slug-change notification**: when a write changes an item's slug, the Data
+  Service reports the old → new slug in its response so clients can surface a
+  clear statement to the user (web UI banner/toast, CLI message).
 
 ### 4. Search
 
@@ -136,10 +143,10 @@ sequenceDiagram
     S-->>W: form model
     U->>W: fill fields + markdown body
     W->>S: POST entity (person)
-    S->>S: validate slug person:... unique, assign technical ID
+    S->>S: derive slug from key fields, ensure unique, assign technical ID
     S->>DB: INSERT
     S-->>W: created entity (id, slug)
-    W-->>U: show saved entity
+    W-->>U: show saved entity (incl. assigned slug)
 ```
 
 ## Deployment (docker compose)

@@ -59,8 +59,12 @@ in `specs/changes/basic_setup/findings-a12.md`.
       `type`, `slug`, `id`, markdown description + type-specific fields), v1.
 - [ ] Register models with the Data Service; confirm generic CRUD endpoints
       respond for each model.
-- [ ] Enforce slug rules server-side: page slug derived from title; entity slug
-      `type:name`, globally unique.
+- [ ] Enforce slug rules server-side: slugs are read-only and derived from each
+      model's **key fields** (page: title; entity: `type:` + key fields, e.g.
+      person first + last name); (re)computed on create and on key-field change;
+      page slugs unique, entity slugs globally unique.
+- [ ] Have the Data Service return the old → new slug when a write changes it,
+      so clients can notify the user.
 
 ## 3. Form models
 
@@ -75,7 +79,10 @@ in `specs/changes/basic_setup/findings-a12.md`.
       Data Service.
 - [ ] Implement **search** (pages + entities) over title/slug/body.
 - [ ] Implement **read/view** with markdown rendering.
-- [ ] Implement **create/edit** using form models (markdown editor for bodies).
+- [ ] Implement **create/edit** using form models (markdown editor for bodies);
+      render the slug as read-only.
+- [ ] When an edit changes the slug, show a **clear notification** (e.g. toast/
+      banner stating the slug changed old → new).
 - [ ] Implement **delete** with confirmation.
 - [ ] Build the client into the `client` container (served static, e.g. nginx).
 - [ ] Verify in a browser: search → open → edit → save → delete round-trips for
@@ -90,6 +97,8 @@ in `specs/changes/basic_setup/findings-a12.md`.
 - [ ] `wiki12 form create|read|update` (form models).
 - [ ] Ensure every command and subcommand has `-h` documentation; add a top-level
       usage overview.
+- [ ] When an `update` changes an item's slug, print a **clear message** stating
+      the slug changed old → new.
 - [ ] Verify CLI operations hit the same Data Service and stay consistent with
       the web client.
 
