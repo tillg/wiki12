@@ -105,4 +105,6 @@ Skills are vendored copies; to update them, re-pull from
 
 ## License
 
-TBD.
+Licensed under the **European Union Public Licence v. 1.2 (EUPL-1.2)** —
+`SPDX-License-Identifier: EUPL-1.2`. See [`LICENSE`](LICENSE) for the full text.
+Copyright © 2026 mgm technology partners GmbH.

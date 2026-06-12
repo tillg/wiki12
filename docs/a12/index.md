@@ -16,6 +16,14 @@ In-repo mirror of the [geta12.com](https://geta12.com/docs/2025.06/ext5/overall/
 
 Each page is Markdown converted from the original Asciidoctor HTML; front-matter records the `source` URL and scrape date. Images/links point back at geta12.com (absolutized), so they need network to render.
 
+## A12 community & support (not in this mirror)
+
+Questions the docs don't answer often have answers here — check before assuming a capability is missing:
+
+- **A12 Discourse forum** — <https://discourse.geta12.com/> — community Q&A. (e.g. global field uniqueness is discussed in [topic 1214 "Validate field is unique between documents"](https://discourse.geta12.com/t/1214).)
+- **A12 training / e-learning** — <https://training.geta12.com/> (GetA12 login).
+- **A12 Support Portal** — mgm Jira service desk for partners (tickets).
+
 ## Sections
 
 ### Overall (concepts, tutorials, modeling/dev guides) — `overall/`

@@ -1,0 +1,17 @@
+{
+  "name": "@wiki12/dm-to-fm",
+  "version": "0.1.0",
+  "description": "Generate a default A12 Form Model from a Document Model (headless 'Build Screens From Fields').",
+  "type": "module",
+  "license": "EUPL-1.2",
+  "bin": { "dm-to-fm": "src/cli.ts" },
+  "scripts": {
+    "generate": "node --experimental-strip-types src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.6"
+  }
+}
