@@ -17,7 +17,7 @@ in `specs/changes/basic_setup/findings-a12.md`.
 >   won't return the rendered content. Use a browser tool (Playwright MCP) to
 >   read it.
 
-- [ ] **Vendor the full A12 documentation into the repo (deliverable)**: scrape
+- [x] **Vendor the full A12 documentation into the repo (deliverable)**: scrape
       the entire geta12.com documentation set (version **2025.06**, the `ext5`
       docs linked above) and commit it under **`docs/a12/`**, so the platform
       reference lives in-repo and survives the SPA / future site changes. Because
@@ -27,43 +27,43 @@ in `specs/changes/basic_setup/findings-a12.md`.
       source URL + scrape date. This in-repo mirror is the durable reference the
       rest of Step 0's findings cite.
 
-- [ ] **Data & form models**: How do we *author*, *validate*, and *register* A12
+- [x] **Data & form models**: How do we *author*, *validate*, and *register* A12
       data models and form models? What is the file format / schema, and what
       tooling validates them (modeler, CLI, build step)?
-- [ ] **Server-side extensibility — the central go/no-go (ADR-0002)**: Can the
+- [x] **Server-side extensibility — the central go/no-go (ADR-0002)**: Can the
       stock Data Service run custom server-side logic/queries (computed fields /
       write hooks / interceptors / custom search)? Slug derivation, slug
       resolution, and unified substring search all depend on this. Resolve it as
       a single gate: YES → logic lives in the Data Service; NO → a thin façade in
       front of it owns all three and A12 is pure storage.
-- [ ] **Default form model generation**: Confirm A12 generates and **stores** a
+- [x] **Default form model generation**: Confirm A12 generates and **stores** a
       default form model from a data model server-side, and that the client form
       engine renders from (data model + form model + document) with client-side
       validation. Where is generation triggered, and how is it managed/persisted?
-- [ ] **Data Service**: How and where do we obtain the A12 Data Service (Java)?
+- [x] **Data Service**: How and where do we obtain the A12 Data Service (Java)?
       Distribution (Maven artifact / Docker image / source), license/access,
       version, and its config + persistence wiring to PostgreSQL.
-- [ ] **Data Service API**: What is the CRUD/query contract (endpoints, payload
+- [x] **Data Service API**: What is the CRUD/query contract (endpoints, payload
       shape, how models are referenced, how search is expressed)?
-- [ ] **A12 Forms in React**: How do we integrate A12 Forms/widgets into a
+- [x] **A12 Forms in React**: How do we integrate A12 Forms/widgets into a
       from-scratch React+TS app? Packages (npm registry/access), required
       providers/bootstrapping, how a form model is bound to a widget tree, and
       markdown field support.
-- [ ] **Markdown as a model field type**: How do we extend A12's model
+- [x] **Markdown as a model field type**: How do we extend A12's model
       capabilities to represent markdown fields? Is there a native rich-text/text
       type to reuse, or do we define a custom field type/format, and how does
       that flow through data model → form model → validation?
-- [ ] **Markdown editor in A12 forms**: How do we integrate a markdown editor
+- [x] **Markdown editor in A12 forms**: How do we integrate a markdown editor
       into an A12 form? Is there a built-in/custom widget mechanism, how is it
       bound to a markdown field, and what editor component do we wrap?
-- [ ] **Versioning & migration hooks**: How does A12 represent data-model
+- [x] **Versioning & migration hooks**: How does A12 represent data-model
       versions on instances, and what is the supported path to migrate instances
       across versions (informs the TS migration runner)?
-- [ ] **Access**: Confirm how we get A12 artifacts and docs — the A12 product
+- [x] **Access**: Confirm how we get A12 artifacts and docs — the A12 product
       repos (<https://github.com/orgs/mgm-tp/repositories?q=a12>), any registry
       creds for published packages, and reachability of the geta12.com docs (see
       Sources note above).
-- [ ] **Open questions log**: capture anything unresolved as explicit risks.
+- [x] **Open questions log**: capture anything unresolved as explicit risks.
 - [ ] **REVIEW GATE**: present `findings-a12.md` to the user and walk through it
       together. The headline output is the **extensibility go/no-go** — it selects
       the architecture (Data Service vs. façade per ADR-0002). Do not start Step 1

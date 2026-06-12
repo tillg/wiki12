@@ -1,5 +1,6 @@
 # Agent / scratch artifacts
 tmp/
+.playwright-mcp/
 
 # Node
 node_modules/

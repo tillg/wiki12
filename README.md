@@ -17,6 +17,36 @@ the foundational system end to end. See its spec artifacts:
 - [`specs/changes/basic_setup/architecture.md`](specs/changes/basic_setup/architecture.md) — technical approach
 - [`specs/changes/basic_setup/plan.md`](specs/changes/basic_setup/plan.md) — implementation steps (starts with an A12 research phase)
 
+### Where we are — `basic_setup` Step 0 (A12 research) done, ⏸ at review gate
+
+Step 0 ("understand & document A12") is complete except its final **review
+gate**. We mirrored the A12 docs into the repo and answered the research
+questions; the headline result is that the **server-side extensibility gate is a
+GO** — slug logic, ID/slug resolution, and substring search can all live in the
+stock A12 Data Service (no façade needed). What got built:
+
+- **[`docs/a12/index.md`](docs/a12/index.md)** — in-repo mirror of the A12 docs
+  (geta12.com 2025.06/ext5, **104 pages**) and the **A12 Widgets Showcase**
+  (**65 pages**, incl. the Lexical Rich Text Editor and the Quick Start guide).
+- **[`src/scrape_geta12/`](src/scrape_geta12)** + **[`src/scrape_showcase/`](src/scrape_showcase)**
+  — the re-runnable scraper tools that produced those mirrors (see their READMEs).
+
+**👉 Next session — read these, in order:**
+
+1. **[`specs/changes/basic_setup/findings-a12.md`](specs/changes/basic_setup/findings-a12.md)**
+   — the research findings. Start with §0 (the GO verdict) and **§8 (open
+   questions / decisions)**: default form model (no server-side generation),
+   unified search shape, migration approach, distribution via the A12 Project
+   Template, **registry/credentials (likely blocker)**, and markdown vs. rich text.
+2. Skim **[`docs/a12/index.md`](docs/a12/index.md)** — note the ⚠️ Quick Start
+   callout at the top (also in [`CONTEXT.md`](CONTEXT.md)).
+3. Re-check the spec artifacts above against the findings; §8 lists suggested
+   updates to ADR-0002/0003, `domain.md`, and `architecture.md`.
+
+Once the findings are approved and the §8 decisions are made, the review gate
+closes and implementation starts at **Step 1** (project scaffolding) in
+[`plan.md`](specs/changes/basic_setup/plan.md).
+
 ## Core concepts
 
 - **Content item** — the single underlying mechanism: a typed, versioned item

@@ -4,6 +4,13 @@ A wiki-style application built on the A12 model-driven platform. It manages two
 kinds of content — Pages and typed Entities — over a shared A12 Data Service,
 reached from both a web client and the `wiki12` CLI.
 
+> ### ⚠️ Before starting any A12 Widgets–based work — read the Quick Start guide
+> Whenever we begin a new A12 Widgets–based project (e.g. the wiki12 web client),
+> **follow the A12 Widgets Quick Start guide first**:
+> <https://www.mgm-tp.com/a12.htmlshowcase/#/get-started/quick-start>
+> In-repo mirror: [`docs/a12/widgets/get-started/quick-start.md`](docs/a12/widgets/get-started/quick-start.md).
+> The full A12 reference is mirrored under [`docs/a12/`](docs/a12/index.md).
+
 ## Language
 
 ### Content

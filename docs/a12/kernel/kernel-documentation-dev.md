@@ -1,0 +1,1851 @@
+---
+source: https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/index.html
+category: kernel
+docid: kernel-documentation-dev
+scraped: 2026-06-12
+---
+
+# Kernel
+
+## Mission statement
+
+* Definition of documents and document models along with modeling tools.
+* A domain specific language for model based computation and validation incl. parser, runtime components and a programming API in various languages.
+
+## Scope of this documentation
+
+This documentation is intended to make it easier for developers in projects using A12 to find their way around *JavaDoc* or
+*TypeDoc* of the various Kernel modules or to find a suitable entry point there.
+
+## Architecture
+
+A12 Kernel publishes several artifacts, both in Java and in TypeScript/JavaScript.
+The interfaces, classes and resources in those artifacts can be grouped in following categories:
+
+* *internal* and *a12internal*
+
+  + Changes (no matter if they are breaking) in this category are documented neither in the changelog nor in the migration instructions.
+  + Breaking changes in this category do not necessarily lead to a new major Kernel version.
+  + You can identify this category if at least one part of the source path is *internal* or *a12internal*.
+* *public*
+
+  + Breaking and non-breaking changes in this category are documented in the changelog and/or in the migration instructions.
+  + Changes in this category follow the semantic versioning.
+
+### Java Artifacts
+
+If you want to use Kernel in Java, you only need to define a dependency to *kernel-md-facade* and you will get access to the whole public API and also at runtime all necessary transitive dependencies are available.
+The following artifacts contain public API:
+
+* *kernel-core-customfieldtype-api*
+* *kernel-md-document-api*
+* *kernel-md-document-v2*
+* *kernel-md-model-api*
+* *kernel-md-runtime-api*
+* *kernel-md-serializer*
+
+Also consult the [Javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/facade/package-summary.html) of the entry points in *kernel-md-facade*.
+An overview of the Java packages containing all interfaces and classes of the Kernel API can be also found in this
+[Javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/index.html).
+
+|  |  |
+| --- | --- |
+|  | The libraries *kernel-core-customfieldtype-api* and *kernel-core-runtime-api* are versioned separately. The actual versions of these libraries are defined in the *kernel-bom pom* that is published to artifactory. It is recommended to use this Kernel *pom* for the dependency management. Thus, it is sufficient to update the version of *kernel-bom pom*, when e.g. upgrading to a new Kernel version, instead of having to adapt several places. |
+
+### TypeScript/JavaScript Artifacts
+
+The npm artifact `@com.mgmtp.a12.kernel/kernel-md-facade` contains all of Kernel’s public APIs, including all services related to document models and documents: [Typedoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/typescript/modules/Document_model_and_document_facade.html)
+
+## Supported Languages
+
+In Kernel we distinguish between different kinds of languages:
+
+* The language of the *validation language*.
+  Kernel supports following cases only:
+
+  + English (IProjectSpecificSettings#Language#ENGLISH): default for A12
+  + German (IProjectSpecificSettings#Language#DEUTSCH)
+* The language of error messages of formal errors which are shown to the end user.
+  Here, the following languages are supported (this means that Kernel defines formal error messages for these languages):
+
+  + English (en)
+  + German (de)
+  + French (fr)
+  + Dutch (nl)
+
+The languages of error messages of formal errors can be extended to more languages.
+See [Custom Error Messages](#_custom_error_messages) for Java and [Localization](#_localization) for TypeScript.
+
+|  |  |
+| --- | --- |
+|  | Error messages of rules and error messages of some field types (e.g. enumerations or string with pattern) are specified in the document model. Here, the business analyst needs to specify error messages for all necessary languages. For TypeScript additional languages can be added by [Localization](#_localization). |
+
+## Getting started
+
+To have access to the entire Kernel API, it is sufficient to specify a dependency on *kernel-md-facade* in both Java and TypeScript - i.e. *com.mgmtp.a12.kernel:kernel-md-facade* in Java or *@com.mgmtp.a12.kernel/kernel-md-facade* in TypeScript.
+All additional necessary artifacts will be resolved transitively.
+
+In case, you only deal with serialization and deserialization of documents and document models in Java, a dependency to
+*kernel-md-serializer* is sufficient.
+Doing so, you also avoid several transitive dependencies to libraries which are needed by generated Java or Groovy code at runtime.
+
+### Getting started using code generated by Kernel at runtime
+
+A12 Kernel generates code from document models that can be used e.g. for validations or for computations in your applications at runtime.
+To support applications written in different programming languages, the code can be generated accordingly.
+The following programming languages are supported:
+
+* Java
+* TypeScript
+* Groovy
+
+For *Java* and *TypeScript* you can find some information in [Entry points to kernel-md](#_entry_points_to_kernel_md) (e.g. API, how to get access and code examples).
+
+Since *Groovy*-Code is always accessed via Java API in A12 (it is used internally for dynamic server-side validation and computation), there is no special information for it.
+
+The generated code depends on several artifacts (the so-called runtime artifacts) that must be available in your application at runtime.
+If Kernel is integrated in your application as described in the previous chapter, these libraries are actually available at runtime.
+
+|  |  |
+| --- | --- |
+|  | The Kernel version used to generate the code must match the version of its dependent runtime artifacts. If this is not the case, a RuntimeException is thrown. |
+
+This situation can occur as follows: The version of runtime artifacts is managed by the build process and it matches the version of the generator.
+However, if the generated code is not generated dynamically, but previously generated code is used in your application (e.g. the generated code could be persistent in your version control system), it is conceivable that deviating versions occur, which will not work.
+
+**Conclusion:** If generated code is persisted in your application please be aware to re-generate the code from your document models whenever you upgrade the Kernel version.
+
+## Entry points to kernel-md
+
+In this section, we provide samples for typical entry points of *kernel-md* which should better lead to the API with the associated Javadoc.
+
+### Document model deserialization
+
+The following steps describe how to deserialize a document model in Java.
+To understand the alternative mentioned below in code see also [this explanation](#md-serialization-only).
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 ``` | ``` // Your own implementation of Reader // E.g. reader=new InputStreamReader(Thread.currentThread().getContextClassLoader().getResourceAsStream(documentModelPath), StandardCharsets.UTF_8)  DocumentModelServiceFactory factory = new DocumentModelServiceFactory(); // as an alternative you can use the following line { 	MDSerializerFactory mdFactory = new MDSerializerFactory(); } IDocumentModelSerializer serializer = factory.createDocumentModelSerializer(); // reader is a java.io.Reader IDocumentModel documentModel = serializer.deserialize(reader); ``` |
+```
+
+In TypeScript, a document model is deserialized as follows.
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` const serializer: DocumentModelSerializer = new DocumentServiceFactory().getDocumentModelSerializer(); const documentModel: DocumentModel = serializer.deserialize(documentModelAsString); ``` |
+```
+
+### Document deserialization
+
+With the following steps a document in JSON format can be deserialized.
+To understand the alternative mentioned below in code see also [this explanation](#md-serialization-only).
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 ``` | ``` // Provide your own implementation of IDocumentModelResolver DocumentServiceFactory factory = new DocumentServiceFactory(myDMResolver); IDocumentV2Serializer serializer = factory.createDocumentV2Serializer(); // as alternative, the last two lines can be replaced through following two lines { 	MDSerializerFactory mdFactory = new MDSerializerFactory(); 	IDocumentV2Serializer docSerializer = mdFactory.createDocumentSerializerV2(myDMResolver); } DocumentDeserializationConfig docDeserializeConfig = DocumentDeserializationConfig.builder() 		.format(DocumentSerializationConfig.Format.JSON).build(); DocumentV2 doc = serializer.deserializeV2(reader, documentModelId, docDeserializeConfig, nr); ``` |
+```
+
+[See also the documentation of the new Document API V2 for an example of how to serialize and deserialize a DocumentV2](#serialization_deserialization_documentv2)
+
+In TypeScript, there is no specific API provided by the Kernel.
+The document is deserialized using TypeScript *JSON.parse*.
+
+### Updating a document
+
+The API to access document models is not described here, because the TypeDoc documentation together with the knowledge of the document models is sufficient for understanding.
+The following code fragment shows you how to use the existing service API to retrieve document model objects and how to transform document JSONs:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 ``` | ``` const docServiceFactory: DocumentServiceFactory = new DocumentServiceFactory(); const docModel: DocumentModel = docServiceFactory     .getDocumentModelSerializer().deserialize(Fs.readFileSync(modelFile, "utf8")); const docService: DocumentService = docServiceFactory.getDocumentService(); const docJSON: any = JSON.parse(Fs.readFileSync(documentFile, "utf8")); const docWithTransientFields = docService.addTransientFields(docJSON, docModel); const docWithDateObjects = docService.parseDates(docWithTransientFields, docModel);  // Do something with your document. // It should now have Date-objects at places where values for Date-, DateTime- or Time-fields are stored // and Date[2] for DateRange-fields. // All the transient fields should have been added (with null values). // Before saving it back, do the reverse:  const docWithDateStrings = docService.formatDates(docWithDateObjects, docModel); const docWithoutTransientFields = docService.removeTransientFields(docWithDateStrings, docModel); const docString = JSON.stringify(docWithoutTransientFields); ``` |
+```
+
+Similarly in Java, there is a corresponding API for manipulating documents: [See the Document API V2 for accessing and manipulating documents in java](#document_api_v2_java).
+
+### Document API V2 (Java)
+
+#### Introduction
+
+The document API V2 is a Java API for accessing and manipulating data in documents.
+It is an alternative and successor to the `IDocument`-based API.
+
+The main differences to the previous API and goals of the new API are:
+
+* an explicit representation of subgroups, including repeatable subgroups (tree structure)
+* provide a more coherent set of utility methods for reading and updating data in documents
+* Kernel provides the implementation - custom implementations of `DocumentV2` are not supported (more flexibility for future changes of the API and for the Kernel implementation)
+* immutable semantics with efficient copy-on-write updates, for a smaller API surface, clearer code and easier caching
+* compatibility with optional generated accessor classes that enable static type checks and properly typed field values for the code that accesses the documents
+
+All document related Kernel functionality support `DocumentV2` - in cases where it is not directly supported yet, users should utilize the conversion methods `IDocumentV1V2Converter#toDocumentV1` and `IDocumentV1V2Converter#ofDocumentV1` as needed, and tell kernel about the affected document V1 functionality and the need to support it for `DocumentV2`.
+
+#### API Guide
+
+##### Obtaining a DocumentV2
+
+`DocumentV2` instances can be created from scratch, converted to and from `IDocument`, or can be deserialized from the same string representation as a V1 `IDocument`.
+
+Create an Empty Document
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` DocumentV2 docV2 = DocumentV2.empty("myDmId"); ``` |
+```
+
+Create a Document with Subgroups
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` // subGroups is a Map<String, RepetitionsV2> DocumentV2 docV2 = DocumentV2.of("myDmId", subGroups); ``` |
+```
+
+Convert from a V1 IDocument
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` DocumentV2 docV2 = converter.ofDocumentV1(docV1); IDocument docV1Again = converter.toDocumentV1(docV2); ``` |
+```
+
+For details on the DM id string in the above examples, see [the note about the DM id](#note_about_dmid).
+
+[How to get an IDocumentV1V2Converter](#create_documentv1v2converter) shows how to get the `converter` instance.
+
+Serialize and Deserialize a DocumentV2
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 7 ``` | ``` // serializer is an IDocumentV2Serializer (obtain one from // DocumentServiceFactory#createDocumentV2Serializer) DocumentV2 docV2 = serializer.deserializeV2(myReader, "MyDm", 		DocumentDeserializationConfig.builder().build(), rankedNotification -> {}); // serialize: serializer.serializeV2(docV2, writer, DocumentSerializationConfig.builder().build()); // writer is a java.io.Writer ``` |
+```
+
+The setup of a serializer instance is shown in the [Setup for DocumentV2 Serialization and Deserialization](#docV2_serialize_deserialize_setup) code snippet.
+
+##### Reading from DocumentV2 and GroupInstanceV2
+
+|  |  |
+| --- | --- |
+|  | See the section on [DocumentPointers](#document_pointers) for a detailed description of how subgroups and fields are addressed in documents. |
+
+Read the Value of a Field
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 ``` | ``` Object myFieldValue = docV2.fieldValue("MyGroup[2]/myField"); // equivalent to DocumentPointer ptr = DocumentPointer.of("MyGroup[2]/myField"); Object myFieldValueAgain = docV2.fieldValue(ptr); ``` |
+```
+
+See the section on [document pointers](#document_pointers) for details on the notation for path and repetition indexes.
+
+|  |  |
+| --- | --- |
+|  | Note that in `DocumentV2` just like in `IDocument`, field values have *compile-time* type `Object`, because the compiler doesn’t know which of the valid basic types the field has. Allowed *runtime* types for field values in `DocumentV2` are `String`, `BigDecimal`, `Boolean`, `Instant` , `InstantRange` (`com.mgmtp.a12.utils.conversion.InstantRange`) and `null`. The surrounding code is responsible for casting correctly where necessary.  Also note that [the document itself does not validate field values against a DM](#note_about_dmid). |
+
+For automatic compile-time typed access, see the section about [generated typed accessor classes](#generated_typed_accessors).
+
+|  |  |
+| --- | --- |
+|  | In contrast to `IDocument` (V1), in `DocumentV2`, values of date and time fields are represented by `java.time.Instant` instead of `java.util.Date`, and date ranges are represented by `InstantRange` instead of a 2-element `Date[]` array. The conversion methods `ofDocumentV1` and `toDocumentV1`, as well as `FieldInstanceV2.ofV1Value` and `FieldInstanceV2.toV1Value` take care of this. |
+
+A group in the document can be fetched as follows:
+
+Read a Subgroup
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 ``` | ``` GroupInstanceV2 subGroup = docV2.group("MyRootGroup/SubGroup[2]"); // equivalent to DocumentPointer ptr = DocumentPointer.of("MyRootGroup/SubGroup[2]"); GroupInstanceV2 subGroupAgain = docV2.group(ptr); ``` |
+```
+
+Subsequently, the group can be read and updated independently, see [Read from Subgroups](#docv2_read_from_groups) and [Updating *Groups* Instead of Whole *Documents*](#docv2_update_groups).
+
+All repetitions of a repeatable group can be fetched with `groupAllRepetitions()`:
+
+Iterate over Repetitions of a Group
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 ``` | ``` for (GroupInstanceV2 subGroup : docV2.groupAllRepetitions("MyGroup[0]")) { 	// do something with subGroup } ``` |
+```
+
+Note that `groupAllRepetitions`, like all methods that refer to *all* repetitions of a group rather than a single repetition, expects the last repetition index of the pointer to be `0`, for wildcard.
+See also section [Wildcard Repetition Index `0`](#wildcard_repetition_index).
+
+Or assigned to a variable of type `RepetitionsV2`:
+
+Get all Repetitions of a Group as a RepetitionsV2 Instance
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` RepetitionsV2 groupRepetitions = docV2.groupAllRepetitions("MyGroup[0]"); GroupInstanceV2 subGroup1 = groupRepetitions.get(1); // 1-based index ``` |
+```
+
+###### Read from Subgroups
+
+The same methods that are used to lookup (and update) subgroups and field values in *documents* also work when a *group* is given in place of the document, because the methods are actually defined on GroupInstanceV2 (and DocumentV2 extends GroupInstanceV2):
+
+Work on a (Sub) Group instead of a Document
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 7 8 ``` | ``` GroupInstanceV2 subGroup = docV2.group("MyRootGroup/SubGroup[2]");  // get the field value at /MyRootGroup/SubGroup[2]/myField: Object myFieldValue = subGroup.fieldValue("myField"); // get the group at /MyRootGroup/SubGroup[2]/subSubGroup: GroupInstanceV2 subSubGroup = subGroup.group("subSubGroup"); // get /MyRootGroup/SubGroup[2]/repeatableSubSubGroup[0]: RepetitionsV2 subSubGroupRepetitions = subGroup.groupAllRepetitions("repeatableSubSubGroup[0]"); ``` |
+```
+
+In this case, the document pointer is resolved relative to the given group (not relative to the root of a here-unknown, potentially non-existent or not unique, surrounding document).
+Note that only groups can directly contain fields, documents are only allowed to contain them indirectly via subgroups (the `withDirectField` method is unsupported on documents).
+See also [Updating *Groups* Instead of Whole *Documents*](#docv2_update_groups)
+
+###### Handling of Absent Field and Group Instances
+
+If the requested field is not present in the given document (or the field value is set to `null`), `fieldValue()` returns `null`.
+The same happens when not only the field, but also some of its ancestor groups are not present.
+
+Similarly, `group()` returns `null` if the subgroup or its ancestors are not present.
+
+`groupAllRepetitions()` will return an empty `RepetitionsV2` instance (`groupRepetitions.size() == 0`) if no repetitions are present or if any ancestor group is not present.
+
+|  |  |
+| --- | --- |
+|  | A document does not know the corresponding DM (it only stores the `dmId` String, accessible with `docV2.getDocumentModelId()`. It is stored mostly for compatibility, because `IDocument` (V1) also has this attribute). Consequently, the document does not distinguish whether a field or subgroup is merely absent from a given document, or not at all allowed in the corresponding DM. Neither is there a distinction between a non-repeatable group and a repeatable group that has no more than one repetition present in the document. Similarly, when documents are updated, there is no check against a DM that would verify if the updated document still matches the DM - to validate this, use [Kernel validation](#kernel_validation), or check against the DM before updating the document. |
+
+If you want to distinguish between a non-present field and a present field with value `null`, use `DocumentV2#field()` instead of `DocumentV2#fieldValue()` to first obtain the `FieldInstanceV2`, check if that is `null`, and if not, check if the field’s value is `null` (`FieldInstanceV2#value()`).
+This distinction is mainly made possible for better compatibility with IDocument, and is likely not relevant in most cases.
+
+##### Updating Documents and Groups
+
+In document API V2, documents are immutable - update operations don’t modify the document in-place, instead they return a reference to an updated document, leaving the original unchanged.
+Nonetheless, the API provides a set of methods that make it easy to update documents and subgroups efficiently.
+
+The main reasons for this immutable design are to help avoid unintended or hard to understand side effects in code that works with documents, avoid the need for wasteful defensive copies and to achieve better implementation flexibility for the document API itself.
+
+Performance-wise, the update operations are implemented with a copy-on-write approach, so that only very little data gets copied even when large documents are updated.
+If your code performs a very large number of subsequent update operations on a single document, have a look at [`GroupInstanceV2#withBatchUpdates`](#with_batch_updates), which provides an operation that is specifically optimized for this particular pattern.
+
+###### Updating Fields
+
+A field value can be set or replaced with
+
+Update or Set a Field Value
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withFieldValue("Address[2]/Street", "Taunusstr"); ``` |
+```
+
+If the field or any ancestor group of the field did not previously exist in `docV2`, it will be created.
+
+|  |  |
+| --- | --- |
+|  | See [Read the Value of a Field](#read_field_value) for types of values that are allowed. |
+
+|  |  |
+| --- | --- |
+|  | The document is independent of any DM, consequently, document updates do not perform validation against a model, see [this note](#note_about_dmid) for details. |
+
+If you want to keep the reference to the original unmodified document:
+
+Update or Set a Field Value
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 ``` | ``` // create the document DocumentV2 document1 = DocumentV2.empty("myDmId") 		.withFieldValue("Phones[1]/PhoneNo", "1234") 		.withFieldValue("Phones[1]/Type", "Home") 		.withFieldValue("Phones[2]/Type", "Office") 		.withFieldValue("Phones[3]/PhoneNo", "9876") 		.withFieldValue("Phones[3]/Type", "Mobile") 		.withFieldValue("PersonalData/Nationality", "german") 		.withFieldValue("PersonalData/Email", "my@mail") 		.withFieldValue("Address[1]/Street", "Machtlfing") 		.withFieldValue("Address[1]/City", "Munich");  // update/add a single field DocumentV2 document2 = document1.withFieldValue("Address[2]/Street", "Taunusstr");  // the document2 itself is new Assertions.assertNotSame(document1, document2); // the address repetitions-list is new Assertions.assertNotSame( 		document1.groupAllRepetitions("Address[0]"), 		document2.groupAllRepetitions("Address[0]")); // the Address[1] is reused from document1 Assertions.assertSame(document1.group("Address[1]"), document2.group("Address[1]")); ``` |
+```
+
+The graphic shows what parts of the document are new (green) when applying the method.
+
+![Static](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/images/withFieldValue.svg)
+
+To add an empty field (with value `null`) to the document explicitly, use `withField` instead of `withFieldValue` (this method is provided primarily for compatibility with document api V1, and may be rarely useful in practice).
+
+###### Updating Subgroups
+
+|  |  |
+| --- | --- |
+|  | The section [creating group instances and repetitions](#create_group_rep_fields) shows how the `newGroup` and `myRepetitions` instances for the examples below can be created if they are not obtained from an existing document. |
+
+|  |  |
+| --- | --- |
+|  | The section on [representation of groups](#theory_representation_of_repeatable_groups) describes background information that might be helpful in order to better understand some details about updates of subgroups and repetitions. |
+
+Set or Replace the Single Repetition of a Non-Repeatable Group or First Repetition of a Repeatable Group
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroup("MyGroup", newGroup); // where newGroup is some GroupInstanceV2 ``` |
+```
+
+Note that adding or replacing the first repetition of a repeatable group is the same as adding/replacing the single repetition of a non-repeatable group (the document does not know if a given group is repeatable in the DM).
+
+Set or Replace the Second Repetition of a *Group With Multiple Repetitions*
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroup("MyGroup[2]", newGroup); ``` |
+```
+
+Insert a Group Repetition
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroupRepetitionInserted("MyGroup[1]", newGroup); ``` |
+```
+
+Here, the difference to `withGroup()` is that if there is already a group present at the specified repetition index, it will not be replaced, but instead the new repetition will be inserted, and all repetitions >= the specified one will be moved to the next higher repetition index (like an insert into a list).
+
+Append a Group Repetition (Automatically Add After Last Filled Repetition Index)
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroupRepetitionAppended("MyGroup[0]", newGroup); ``` |
+```
+
+Here, we specify a repetition index of `0` ("all repetitions"), because the append-operation determines the next free index (where `newGroup` will be put) by itself, taking all currently present repetitions into account.
+See also section [Wildcard Repetition Index `0`](#wildcard_repetition_index).
+
+Set or Replace all Repetitions of a Group
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroupAllRepetitions("foo[0]", myRepetitions); // myRepetitions is a RepetitionsV2 ``` |
+```
+
+(this only makes sense for a repeatable group, but it can technically also be used with a single-element RepetitionsV2 in case of a non-repeatable group)
+
+###### Updating *Groups* Instead of Whole *Documents*
+
+The methods that read and update subgroups and fields in documents also work on groups (See also [Read from Subgroups](#docv2_read_from_groups)):
+
+Example of Some Method that Works on a Subgroup
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 ``` | ``` private GroupInstanceV2 processAndUpdateSubgroup(GroupInstanceV2 subGroup) { 	// withFieldValue, withGroup, etc. work on the subgroup too, like on a document 	subGroup = subGroup.withFieldValue("myField", "new value"); 	// ... (update subGroup in some complex way) 	return subGroup; } ``` |
+```
+
+Note that as the update is not in-place, you may want to subsequently insert the updated group back into an overall document:
+
+Example usage of a Method that Works on a Subgroup
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 ``` | ``` // mySubgroupPointer is a DocumentPointer GroupInstanceV2 updatedSubGroup = processAndUpdateSubgroup(docV2.group(mySubgroupPointer)); DocumentV2 updatedDocument = docV2.withGroup(mySubgroupPointer, updatedSubGroup); ``` |
+```
+
+###### Automatic Insertion of Missing Ancestor Groups and Repetitions
+
+The above methods (`withFieldValue`, `withGroup`, `withGroupAllRepetitions`, etc.) will create all ancestor groups of the added field or group, in case they are not already present in the document.
+Lower repetitions of repeatable groups will also be filled with empty groups (e.g. if an insertion happens for `/a/b[3]/f1` and currently `b` has only the first repetition present, then an empty second repetition will be added for `b`, so that `b[3]` can successfully be added at (one-based) repetition index `3` without a gap).
+
+Missing Ancestor Groups and Repetitions are Created Automatically
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 7 ``` | ``` DocumentV2 docV2 = DocumentV2.empty("myDmId") 		.withFieldValue("myRootGroup/mySubGroup[3]/fieldA", "some value"); // docV2 will contain the ancestor groups myRootGroup, three repetitions of // subgroup mySubGroup (the first two are empty groups), and a field // instance with value "foo bar" in the 3rd repetition of mySubGroup. // ==> // {"myRootGroup": {"mySubGroup": [{}, {}, {"fieldA": "foo bar"}]}} ``` |
+```
+
+###### Deletions
+
+Remove a Field
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withFieldRemoved("myGroup/myField"); ``` |
+```
+
+Remove the Single Repetition of a Non-Repeatable Group
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroupRemoved("myGroup"); ``` |
+```
+
+Remove a Particular Repetition of a Group that has Multiple Repetitions
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroupRemoved("myRepeatableGroup[2]"); ``` |
+```
+
+If there are entries for higher repetitions of `myRepeatableGroup`, they will shift one repetition index downward to fill the gap that was left by the removed repetition. i.e. the subgroup that was previously at `/myRepeatableGroup[3]` will end up at `/myRepeatableGroup[2]`, etc.
+
+Note that a subgroup that has only an empty repeatability (no repetitions present) is equivalent to a subgroup that is not present, therefore removing the last remaining repetition of a repeatable group (always at index 1) is the same as removing the single repetition of a non-repeatable group.
+
+To remove a repetition of a group *without shifting higher repetitions downward* (Note that no gaps in Repetitions are allowed), use
+
+Empty a Group Repetition without Removing
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroupEmptiedButNotRemoved("myRepeatableGroup[1]"); ``` |
+```
+
+This replaces the repetition with an empty group.
+
+Remove All Repetitions of a Group
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` docV2 = docV2.withGroupAllRepetitionsRemoved("myGroupB[1]/mySubGroup[0]"); ``` |
+```
+
+If the removed group has only one repetition, `withGroupAllRepetitionsRemoved` has the same effect as `withGroupRemoved`.
+
+If the removed field or group (or any of its ancestor groups) is not present in the document prior to the remove operation, the operation returns the unmodified document.
+(This is why there are explicit methods for removal, rather than relying on the regular `with...` methods with `null` or empty update values, as those methods would add missing parent groups even if an empty or null group or field is given.)
+
+###### Batch Updates
+
+The method `GroupInstanceV2#withBatchUpdates` can be used when a very large number of subsequent modifications is done and the intermediary versions of the document or group are not needed.
+Because no references to intermediary results are required, this operation can be implemented with optimized asymptotic performance.
+It is used internally when documents are converted from V1 documents or deserialized, but is likely not necessary in most situations in practice.
+Currently, only *additions/replacements* of groups and fields are supported - deletions could be implemented in the future if needed.
+See the [`withBatchUpdates` javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/immutable/GroupInstanceV2.html#withBatchUpdates(java.util.Collection)) for details before using this method.
+
+Batch Update of Documents or Groups
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 7 8 ``` | ``` docV2 = docV2.withBatchUpdates(List.of( 	UpdateAction.putFieldValue("myGroup/fieldA", "foo"), 	UpdateAction.putField("myGroup/fieldB", FieldInstanceV2.ofValue("foo")), 	UpdateAction.putGroup("myGroup/subGroup[1]", subGroup), 	UpdateAction.putGroup(mySubGroupPointer, otherSubGroup) 	// ... 	// ... e.g. thousands of inserts )); ``` |
+```
+
+###### Converting between DocumentV2 and GroupInstanceV2
+
+A `DocumentV2` instance can be converted to a `GroupInstanceV2` so that the document’s root groups become the subgroups of the returned group instance.
+This can be useful if the document is to be inserted as a subgroup of another document, e.g. corresponding to includes in the DM.
+
+Convert a Document to a Group
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 ``` | ``` GroupInstanceV2 asGroup = doc.toRootRootGroup();  Assertions.assertEquals( 	doc    .fieldValue("subgroup/someField"), 	asGroup.fieldValue("subgroup/someField"));  // in contrast to the doc, the group allows direct fields GroupInstanceV2 groupWithDirectField = asGroup.withDirectFieldValue("directField", "someValue"); Assertions.assertThrows(UnsupportedOperationException.class, 		() -> doc.withDirectFieldValue("directField", "someValue")); ``` |
+```
+
+The reverse is also possible: Create a DocumentV2 from a "root of rootgroups" GroupInstanceV2. Note that the group must not contain direct fields, because direct fields are not allowed in documents.
+
+Convert a Group to a Document
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` DocumentV2 asDocAgain = DocumentV2.ofRootRootGroup("myDmId", asGroup); Assertions.assertEquals(doc, asDocAgain); ``` |
+```
+
+###### Merging Documents or Groups
+
+Merge Two Documents With no Repeatable Groups or Without Concatenating Repetitions
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` DocumentV2 mergedDocument = docV2.withMerged(otherDocV2); ``` |
+```
+
+If a field exists with a non-null value in both documents, the one from otherDocV2 will overwrite the value from docV2.
+
+By default, subgroups that have more than one repetition will be merged by recursively merging the subgroup repetitions with the same repetition index from both documents.
+If the repetitions of (some) repeatable groups should instead be concatenated, this can be controlled with the following overload of the `withMerged` method:
+
+Merge Two Documents and Control which Repetitions are Concatenated
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 ``` | ``` DocumentV2 mergedDocument = docV2.withMerged( 	otherDocV2, 	// pass some DocumentPointer -> boolean function (as a minimal IDocumentMergeConfig): 	pointer -> shouldRepetitionsBeConcatenated(pointer) ); ``` |
+```
+
+If even more fine-grained control over the merge is required, a full `IDocumentMergeConfig` can be passed instead of the lambda:
+
+Merge Two Documents with Custom Merge of Repetitions
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 ``` | ``` DocumentV2 mergedDocument = docV2.withMerged( 	otherDocV2, 	new IDocumentMergeConfig() { 		@Override public boolean shouldUseCustomMergeForRepetitions(DocumentPointer pointer) { 			return shouldRepetitionsBeConcatenated(pointer); 		}  		@Override public Collection<UpdateAction> customMergeForRepetitions(DocumentPointer ptr, 				RepetitionsV2 repCurrent, RepetitionsV2 repOther) { 			// see the default implementation of customMergeForRepetitions 			// as an example for myCustomMergeFunction 			return myCustomMergeFunction(ptr, repCurrent, repOther); 		} 	} ); ``` |
+```
+
+##### Creating Instances of GroupInstanceV2, RepetitionsV2, FieldInstanceV2 and InstantRange
+
+Create a Group Instance
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 ``` | ``` GroupInstanceV2 g = GroupInstanceV2.empty(); // or GroupInstanceV2 g2 = GroupInstanceV2.of(subGroups, fields); // subGroups is a Map<String, RepetitionsV2>, // fields is a Map<String, FieldInstanceV2> ``` |
+```
+
+Create a RepetitionsV2:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` RepetitionsV2 r = RepetitionsV2.empty(); RepetitionsV2 r2 = RepetitionsV2.of(repetitionsList); // repetitionsList is a List<GroupInstanceV2> ``` |
+```
+
+Create a FieldInstanceV2:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` FieldInstanceV2 f = FieldInstanceV2.ofValue(BigDecimal.valueOf(42)); // allowed values: String, BigDecimal, Boolean, Instant, InstantRange, null ``` |
+```
+
+Create a FieldInstanceV2 (Value from V1 IDocument):
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 ``` | ``` FieldInstanceV2 f2 = FieldInstanceV2.ofV1Value(fieldV1.getValue().orElse(null)); // V1 values are wrapped in an Optional<Object> and need to be unwrapped first. // Instead of Instant and InstantRange, V1 fields use Date and Date[]; // ofV1Value takes care of the conversion. ``` |
+```
+
+Create an InstantRange:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` InstantRange instantRange = InstantRange.of(i1, i2); ``` |
+```
+
+##### DocumentPointer: Addressing Fields and Subgroups in Documents
+
+Within a document (both V1 or V2), each field instance and group instance is unambiguously identified by the combination of path (e.g. `"/MyRootGroup/SubGroup/fieldA"`) and repetitition indexes (e.g. `[1, 2, 1]` ).
+
+In the document API V2, this is represented by an instance of `DocumentPointer`
+([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/DocumentPointer.html))
+.
+
+A `DocumentPointer` can be created from a human-friendly string notation or from lists of path parts and repetition indexes.
+Most methods that expect a DocumentPointer also have an overloaded version that directly accepts the string notation of the DocumentPointer.
+
+Defining a Document Pointer from String Notation
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` static final DocumentPointer SECOND_REPETITION_OF_FIELD_A = DocumentPointer.of("MyRootGroup/SubGroup[2]/fieldA"); ``` |
+```
+
+|  |  |
+| --- | --- |
+|  | In the String notation for `DocumentPointer`, repetition indexes that are 1 can be omitted because they are defined to be implicitly 1 unless specified otherwise. i.e. `DocumentPointer.of("MyRootGroup/SubGroup[2]/fieldA")` and `DocumentPointer.of("MyRootGroup[1]/SubGroup[2]/fieldA[1]")` are equivalent. |
+
+|  |  |
+| --- | --- |
+|  | In the String notation for `DocumentPointer`, a leading `/` is allowed but redundant, i.e. `DocumentPointer.of("MyGroup/myField")` and `DocumentPointer.of("/MyGroup/myField")` are the same. There is no distinction between absolute and relative paths: An "absolute" pointer is simply one that is used on a document rather than on a (sub)group. |
+
+Defining a Document Pointer from Lists, with no String Parsing at Runtime
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 ``` | ``` DocumentPointer pointer2 = DocumentPointer.of( 		List.of("MyRootGroup", "SubGroup", "fieldA"), 		List.of(1, 2, 1)); ``` |
+```
+
+Example for a Method that Directly Accepts the String Notation of a DocumentPointer
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` // the group() method is overloaded to also accept the string notation for the pointer GroupInstanceV2 subGroup = docV2.group("MyRootGroup[2]/subGroup"); ``` |
+```
+
+Note that the last example results in repeated string parsing at runtime if the line is executed more than once.
+
+If fields are accessed, the last repetition of the document pointer must be `1`, because fields are never repeatable.
+
+###### Wildcard Repetition Index `0`
+
+The last repetition of a `DocumentPointer` can in some contexts be the special value `0`, which represents "all repetitions".
+(Remember that repetition indexes are 1-based, so `0` is not a normal index value).
+
+A wildcard repetition index is expected by methods that work with all repetitions of a group, such as `DocumentV2#groupAllRepetitions`.
+Those methods will typically validate that the repetition index is indeed `0` in order to detect possible programming errors.
+
+|  |  |
+| --- | --- |
+|  | There is **no** support for wildcard repetitions in other places than the last repetition, as those might resolve to multiple pointers. For such cases the [`DocumentMultiPointer`](#document_multi_pointer) ([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/DocumentMultiPointer.html)) is meant to be used. |
+
+###### DocumentMultiPointer
+
+The `DocumentMultiPointer` is similar to a DocumentPointer, but also allows a repetition index of `0` (wildcard) in every position.
+The pointer is used when multiple instances of a field or group are meant to be selected.
+
+A pointer of `/a[0]/b[3]/c[0]` means:
+
+* all repetitions of `a`
+* only the 3rd repetition of `b`
+* and all repetitions of `c`
+
+In principle, such a pointer can be interpreted as a Set of [DocumentPointers](#document_pointers) describing the specific repetitions.
+In the case of `/a[0]/b[3]/c[0]` this would include `/a[1]/b[3]/c[1]`, `/a[1]/b[3]/c[2]`, `...`, `/a[n]/b[3]/c[m]` for all `n` and `m` that are valid repetition indexes for the respective groups.
+This means that the pointer can reference any valid combination of repetitions within the specified structure.
+
+|  |  |
+| --- | --- |
+|  | While a DocumentMultiPointer can describe a single specific pointer (all repetition indexes `>0`), it is not interchangeable with a DocumentPointer. The API enforces this distinction, preventing the use of a DocumentMultiPointer where a DocumentPointer is required, and vice versa. However, a DocumentMultiPointer can be derived from a DocumentPointer. |
+
+###### Creating a DocumentMultiPointer
+
+A DocumentMultiPointer can be created of a path with explicit indexes (similar to `DocumentPointer#of(String)`), but allows for `0` (wildcard) indexes in any place.
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` documentMultiPointer = DocumentMultiPointer.of("a[0]/b[3]/c[0]"); ``` |
+```
+
+A path with all repetitions set to wildcard
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` documentMultiPointer = DocumentMultiPointer.ofPathWithAllWildcards("a/b/c"); Assertions.assertEquals(DocumentMultiPointer.of("a[0]/b[0]/c[0]"), documentMultiPointer); ``` |
+```
+
+Convert from a DocumentPointer
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` documentMultiPointer = DocumentMultiPointer.of(documentPointer); ``` |
+```
+
+See [Additional Utilities and Functionality](#additional_utils) for usages of DocumentMultiPointer.
+
+###### Relation between pointers
+
+The DocumentMultiPointer provides methods for checking the relation to DocumentPointers.
+
+The following DocumentMultiPointer
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` DocumentMultiPointer abcPointer = DocumentMultiPointer.of("a[0]/b[3]/c[0]"); ``` |
+```
+
+has an *ancestor* relation (for details refer to the [`containsAncestorOf` javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/DocumentMultiPointer.html#containsAncestorOf(com.mgmtp.a12.kernel.md.document.apiV2.DocumentPointer))):
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 ``` | ``` // Any repetition index (>0) is included where a wildcard index is specified DocumentPointer dp = DocumentPointer.of("a[1]/b[3]/c[100]"); Assertions.assertTrue(abcPointer.containsAncestorOf(dp));  // The repetition 1 of b is *not* included DocumentPointer wrongRepetition = DocumentPointer.of("a[1]/b[1]/c[1]"); Assertions.assertFalse(abcPointer.containsAncestorOf(wrongRepetition));  // Any group/field that is a part of the subtree of documentMultiPointer DocumentPointer subGroup = DocumentPointer.of("a[7]/b[3]/c[4]/d"); Assertions.assertTrue(abcPointer.containsAncestorOf(subGroup));  // Parent groups are *not* included DocumentPointer parent = DocumentPointer.of("a[6]/b[3]"); Assertions.assertFalse(abcPointer.containsAncestorOf(parent)); ``` |
+```
+
+has a *descendents* relation ([`containsDescendentOf` javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/DocumentMultiPointer.html#containsDescendentOf(com.mgmtp.a12.kernel.md.document.apiV2.DocumentPointer))):
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 ``` | ``` dp = DocumentPointer.of("a[7]/b[3]"); Assertions.assertTrue(abcPointer.containsDescendentOf(dp));  // subgroups are not included. DocumentPointer subgroup = DocumentPointer.of("a[7]/b[3]/c[4]/d"); Assertions.assertFalse(abcPointer.containsDescendentOf(subgroup)); ``` |
+```
+
+has an *"equals"* relation ([`contains` javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/DocumentMultiPointer.html#contains(com.mgmtp.a12.kernel.md.document.apiV2.DocumentPointer))):
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 7 8 ``` | ``` // A pointer has to have the same path length, but can have different indexes, // where wildcard indexes are specified DocumentPointer match = DocumentPointer.of("a[7]/b[3]/c[4]"); Assertions.assertTrue(abcPointer.contains(match));  // A pointer with different path length is not included in "the set" of pointers. DocumentPointer differentLength = DocumentPointer.of("a[7]/b[3]"); Assertions.assertFalse(abcPointer.contains(differentLength)); ``` |
+```
+
+Similar methods are implemented for relations of a *DocumentPointer with another DocumentPointer* (see [`isAncestorOf`](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/DocumentPointer.html#isAncestorOf(com.mgmtp.a12.kernel.md.document.apiV2.DocumentPointer)), [`isDescendantOf`](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/DocumentPointer.html#isDescendantOf(com.mgmtp.a12.kernel.md.document.apiV2.DocumentPointer))), but not *DocumentPointer to DocumentMultiPointer*.
+
+##### Traversing a Document or Group with IDocumentV2Visitor
+
+|  |  |
+| --- | --- |
+|  | For simple cases use [DocumentV2Utils#getFieldInstances](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/utils/DocumentV2Utils.html#getFieldInstances(com.mgmtp.a12.kernel.md.document.apiV2.immutable.GroupInstanceV2,com.mgmtp.a12.kernel.md.document.apiV2.DocumentMultiPointer)) (see a [`getFieldInstances`](#getFieldInstance) usage) and [DocumentV2Utils#getGroupInstances](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/utils/DocumentV2Utils.html#getGroupInstances(com.mgmtp.a12.kernel.md.document.apiV2.immutable.GroupInstanceV2,com.mgmtp.a12.kernel.md.document.apiV2.DocumentMultiPointer)). |
+
+Traverse a Document or Group to Find all Present Fields
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 ``` | ``` docV2.traverse(new IDocumentV2Visitor() { 	@Override public void visitField(DocumentPointer pointerRelativeToBase, FieldInstanceV2 field) { 		IDocumentV2Visitor.super.visitField(pointerRelativeToBase, field); 		// record some information about field and / or pointerRelativeToBase 	} }); ``` |
+```
+
+Traverse a Document or Group (Large Example)
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 ``` | ``` // we want to collect all group instances matching a given path Map<DocumentPointer, GroupInstanceV2> groupInstances = new HashMap<>();  // we want to visit every group that matches the pointer DocumentMultiPointer groupsWeAreLookingFor = DocumentMultiPointer.of("a/b[0]/c[5]");  // create a custom visitor implementation that traverses groups IDocumentV2Visitor groupVisitor = new IDocumentV2Visitor() { 	@Override public DescendType visitGroup( 			DocumentPointer pointerRelativeToBase, GroupInstanceV2 group) { 		// the parent method should always be called 		IDocumentV2Visitor.super.visitGroup(pointerRelativeToBase, group);  		// are we on the right track with the current group, successfully matches: 		// - '' (root) 		// - 'a[1]' 		// - 'a[1]/b[X]' (any repetition 'X') 		// - 'a[1]/b[X]/c[5]' 		// no other subgroups 		if (groupsWeAreLookingFor.containsDescendentOf(pointerRelativeToBase)) { 			// if the group is reached 			if (groupsWeAreLookingFor.contains(pointerRelativeToBase)) { 				groupInstances.put(pointerRelativeToBase, group);  				// group found, subgroups are no longer relevant 				return DescendType.SKIP_CHILDREN; 			} else { 				// only visit the specific subgroup that is given by the pointer 				String nextName = 					groupsWeAreLookingFor.getPartAtLevel(pointerRelativeToBase.size()).name(); 				return DescendType.visitSingleSubgroup(nextName); 			} 		} else { 			// we don't have to check further if this is 			// either a different path or 			// a different repetition as the one we are searching for 			return DescendType.SKIP_CHILDREN; 		} 	}  	/* the following methods are also available 	void endVisitGroup(DocumentPointer pointerRelativeToBase, GroupInstanceV2 group); 	RepetitionDescendType visitRepetitions(DocumentPointer pointerRelativeToBase, RepetitionsV2 rep); 	void endVisitRepetitions(DocumentPointer pointerRelativeToBase, RepetitionsV2 rep); 	void visitField(DocumentPointer pointerRelativeToBase, FieldInstanceV2 field); 	*/ };  // document we want to check DocumentV2 docV2 = DocumentV2.empty("myDmId") 		.withGroup("a/b[1]/c[5]", GroupInstanceV2.empty()) 		.withGroup("a/b[2]/c[5]", GroupInstanceV2.empty()) 		// this instance should not be returned as it does not match the pointer 		.withGroup("a[2]/b[1]/c[5]", GroupInstanceV2.empty()) 		.withFieldValue("a/b[4]/c[5]/cField", "Value"); docV2.traverse(groupVisitor);  Assertions.assertEquals(3, groupInstances.size());  Assertions.assertNotNull(groupInstances.get(DocumentPointer.of("a/b/c[5]"))); Assertions.assertNotNull(groupInstances.get(DocumentPointer.of("a/b[2]/c[5]"))); Assertions.assertEquals(GroupInstanceV2.empty().withDirectFieldValue("cField", "Value"), 		groupInstances.get(DocumentPointer.of("a/b[4]/c[5]")));  Assertions.assertNull(groupInstances.get(DocumentPointer.of("a[1]/b[3]/c[5]"))); Assertions.assertNull(groupInstances.get(DocumentPointer.of("a[2]/b[1]/c[5]"))); ``` |
+```
+
+This example traverses a document and collects all groups that match the given pointer.
+It is a simplified version of [DocumentV2Utils#getGroupInstances](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/utils/DocumentV2Utils.html#getGroupInstances(com.mgmtp.a12.kernel.md.document.apiV2.immutable.GroupInstanceV2,com.mgmtp.a12.kernel.md.document.apiV2.DocumentMultiPointer)), see the implementation for further optimizations.
+
+|  |  |
+| --- | --- |
+|  | All methods in IDocumentV2Visitor ([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/immutable/utils/IDocumentV2Visitor.html)) are optional, i.e. default implementations are provided in the interface. |
+
+###### Traverse to every sub group of the pointer
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 7 8 ``` | ``` if ( 	// Check if we need to traverse further to reach the searched pointer 	pointerToVisit.containsDescendentOf(pointerRelativeToBase) || 	// Check if we are in any subgroup 	pointerToVisit.containsAncestorOf(pointerRelativeToBase) ) { 	// ... } ``` |
+```
+
+##### Additional Utilities and Functionality
+
+In addition to the methods for [DocumentV2](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/immutable/DocumentV2.html), [GroupInstanceV2](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/immutable/GroupInstanceV2.html), [RepetitionsV2](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/immutable/RepetitionsV2.html), and [FieldInstanceV2](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/immutable/FieldInstanceV2.html), there are auxiliary utilities that provide further functionality.
+
+###### DocumentV2Utils
+
+The DocumentV2Utils ([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/utils/DocumentV2Utils.html)) provide functionality that can be used without any DocumentModel (in contrast to the utils in [IDmAwareDocService](#idm_aware_doc_service)).
+
+To get all field instances with a specific path the method `getFieldInstances` can be used.
+It returns a `Set` of all existing field instances in a group that match the given path and repetition indexes.
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 ``` | ``` DocumentMultiPointer documentMultiPointer = DocumentMultiPointer.of("a[0]/b[3]/c[0]"); fieldInstances = DocumentV2Utils.getFieldInstances(group, documentMultiPointer); ``` |
+```
+
+Two `DocumentV2` s can be compared using `DocumentV2Utils.compare` ([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/utils/DocumentV2Utils.html#compare(com.mgmtp.a12.kernel.md.document.apiV2.immutable.GroupInstanceV2,com.mgmtp.a12.kernel.md.document.apiV2.immutable.GroupInstanceV2,com.mgmtp.a12.kernel.md.document.apiV2.utils.DocumentV2Utils.CompareConfig))).
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 ``` | ``` config = DocumentV2Utils.CompareConfig.builder().emptyAndNullAsAbsent(true).build(); DocumentChanges comparisonResult = 		DocumentV2Utils.compare(oldGroupInstance, newGroupInstance, config); ``` |
+```
+
+Now all changed fields can be retrieved with
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` changes = comparisonResult.expandedFieldChanges(); ``` |
+```
+
+###### IDmAwareDocService
+
+`IDmAwareDocService` ([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/services/IDmAwareDocService.html)) provides util functionality that requires information from the `DocumentModel` to work with ids of fields and groups, data type conversion, and transient fields.
+
+Remove all groups and fields that are not defined in the DM
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 ``` | ``` dmAwareDocService = 	documentServiceFactory.createDmAwareDocService(document.getDocumentModelId()); DocumentV2 documentWithoutUnknowns = dmAwareDocService.removeUnknowns(document); ``` |
+```
+
+|  |  |
+| --- | --- |
+|  | The id has to be resolvable for this method to succeed. The used id does not have to be the id in the Document, as it is also possible to use a different DocumentModel which only contains a subset of the fields. If the DocumentModel does not match the provided DocumentV2 at all, then an empty Document is returned. |
+
+The method `IDmAwareDocService.convertToJavaTypeV2` ([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/services/IDmAwareDocService.html#convertToJavaTypeV2(java.lang.String,java.lang.String,java.util.function.Consumer))) can be used to convert a string (in the format that is used in JSON- or XML-serialized documents) to the parsed value that matches the field type from the DocumentModel:
+
+Type conversion
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 ``` | ``` DocumentPointer fieldInstancePointer = DocumentPointer.of("/RGx[2]/n1"); Object typedFieldValue = /* BigDecimal */ dmAwareDocService.convertToJavaTypeV2( 		fieldInstancePointer.fullName(), "1234", notifcationReceiver::add); document = document.withFieldValue(fieldInstancePointer, typedFieldValue); ``` |
+```
+
+##### Background: Representation of Repeatable and Non-Repeatable Groups, Empty and Absent Repetitions
+
+###### Non-Repeatable Groups are 1-Repeatable Groups
+
+All groups, whether repeatable or not, are represented in the same way in the document.
+A non-repeatable group is simply a group that has no more than one repetition.
+
+Closely related, there is no distinction between a repeatable group for which no repetitions are present, and a non-repetable group that is not present.
+
+This design was chosen because it matches the information that is present in `IDocument` of the document API V1 (otherwise V1↔V2 conversion would not be possible without the DM), and because it simplifies the structure of documents.
+It is, however, slightly different to the typescript document API, which uses separate representations for repeatable and non-repeatable groups.
+
+###### `RepetitionsV2` and empty Repetitions
+
+The repetitions of a group are represented in a list-like structure:
+There cannot be "gaps" between repetitions, and if a repetition is removed, all subsequent repetitions move one position closer to the start of the list.
+When a repetition is added, it can either be appended, replace an existing repetition, or it can be inserted before an existing one, which shifts all subsequent repetitions one position further from the start of the list.
+"Removing" a repetition without shifting the subsequent repetitions forward is possible by replacing the "removed" repetition with an empty group.
+
+`RepetitionsV2`, which represents the list of repetitions of a group, allows to add a `GroupInstanceV2` at a higher repetition than the current length of the list, and will automatically insert empty group repetitions before the inserted group, so that the inserted group ends up at the desired repetition index.
+Because the document is independent of the corresponding DM (if it even exists), there is no distinction between a repetition that is (currently) not present, and a repetition that is not present and that is beyond the maximum allowed repeatability in the DM (`RepetitionsV2#get` returns `null` when queried with an index greater than the maximum present repetition).
+This is analogous to `GroupInstanceV2#directField` which returns `null` if no field is present with the given name (independent of whether a field of that name is even defined in the DM or not).
+
+#### Typed Accessor Classes for Compile-Time Type Checks & IDE-Autocomplete
+
+|  |  |
+| --- | --- |
+|  | This section is relevant for users who develop code that interacts with the fields and group hierarchy of a specific Document Model or a set of specific DMs. It does not apply to code that processes generic documents, where the corresponding DM is not known at development time (e.g. only given at runtime). |
+
+The typed accessor generator creates, for a given DM, classes that enable the following features for code that interacts with the fields and group hierarchy of that DM:
+
+* compiler type checks against the group hierarchy and field types of the DM, including detecting when the DM was modified and has diverged from the (handwritten) project code
+* automatic casting of field values (so they are no longer Object, but String, BigDecimal, Boolean, Instant, InstantRange, or Enums with constants that correspond to the allowed enum values)
+* IDE-Autocomplete
+* access to the modeler-defined internal and external descriptions of groups and fields (via javadoc)
+
+This code generator has two alternative modes:
+
+[`--mode overlay`](#overlay_mode) is the default and is tightly integrated with `DocumentV2`.
+When the classes generated by this mode are used, data does not get copied from the `DocumentV2`.
+The classes merely act as an overlay that enables the compile-time checks.
+This also allows to mix typed-checked and general `DocumentV2`-based code on the same data.
+It also means that the typed accessor classes don’t necessarily need to know about the whole DM - they can also be generated just for a selection of groups and fields, or the generated classes (and the hand-written code that interacts with them) could be used for multiple different DMs that all share the selected subgroups and fields (e.g. when the DMs share the same additive model).
+
+[`--mode pojo`](#pojo_mode) was an experimental, now deprecated, alternative mode intended for use cases that prefer more traditional Java Bean like mutable classes with getters and setters.
+This can be preferable e.g. when the classes should interact with other libraries or frameworks that expect Bean-Like Objects.
+The classes that are generated with this mode copy their data from a given document or group when they are instantiated, and offer a method for exporting back to `DocumentV2`.
+Classes from PoJo mode do not offer automatic handling e.g. of missing subgroups/parent groups or repetitions, and they always need to be generated for the whole DM, otherwise the data for the unknown subgroups would be lost.
+
+##### Typed-Overlay Classes (`--mode overlay`)
+
+###### Usage Examples of Typed Overlay Classes
+
+The following examples use the DM "DomainContact" as shown below:
+
+![dm domain contact partially expanded](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/images/dm_domain_contact_partially_expanded.png)
+
+Read from an Existing Document via Typed Accessors
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 ``` | ``` // The DomainContact class is the generated view class for the // document model named DomainContact. // With the gradle config that is used here, it can be imported from // my.generated.typings.domaincontact.views.DomainContact DomainContact typedDocument = DomainContact._viewOf(docV2); for (Address address : typedDocument._at(DomainContact._pointer().contact().address())) { 	String city = address.city(); 	String country = address.country(); 	// ... } ``` |
+```
+
+Note: the typed accessor classes do not validate the given document - it is the caller’s responsibility to ensure that the document that is passed to `_viewOf` conforms to the same DM for which the accessor classes were generated.
+Otherwise, subgroups and fields may not be found, and field value casts can fail.
+When the shape of the document is unknown, consider checking it with Kernel validation first.
+
+|  |  |
+| --- | --- |
+|  | On typed views and pointers, the general methods, that exist independent of the DM, start with an underscore (like `_viewOf()`, `_at()`, `_with()`, `_pointer()`), to better distinguish them from the DM-derived methods that represent groups and fields (like `contact()`, `address()`, `city()` in the example above). |
+
+Create or Update a Document via Typed Accessors
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 ``` | ``` var phonePointer = Phones._pointer(); Phones phone1 = Phones._empty() 		._with(phonePointer.phoneNumber(), "089 123456") 		._with(phonePointer.type(), Type.WORK); Phones phone2 = Phones._empty() 		._with(phonePointer.phoneNumber(), "0176 654321") 		._with(phonePointer.type(), Type.MOBILE);  var contactPointer = DomainContact._pointer().contact(); var personalDataPtr = contactPointer.personalData(); DomainContact domainContact = DomainContact._empty() 	._with(personalDataPtr.firstName(), "Max") 	._with(personalDataPtr.lastName(), "Mustermann") 	._with(contactPointer.phones(1), phone2) 	._withInsertedRepetition(contactPointer.phones(1), phone1);  // optional: DocumentV2 untypedDocument = domainContact._unwrap(); ``` |
+```
+
+The above example demonstrates the `_withInsertedRepetitions` method that *inserts* rather than replaces the specified repetition.
+Alternatively, phone1 and phone2 could be set for repetitions 1 and 2 respectively via calls to `_with`, or an all-repetitions pointer could be used as follows:
+
+Usage of a Typed Pointer that Points to all Repetitions of a group
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 ``` | ``` var allPhonesPointer = contactPointer.phones(); DomainContact domainContact2 = DomainContact._empty() 		._with(personalDataPtr.firstName(), "Max") 		._with(personalDataPtr.lastName(), "Mustermann") 		._with(allPhonesPointer, List.of(phone1, phone2)); ``` |
+```
+
+By calling the `.phones()` method with no argument, we get a pointer to *all* repetitions rather than to a specific *single* repetition.
+
+There is also the convenience method `_withAppendedRepetition` which automatically appends at the end:
+
+Append a Repetition to a Repeatable Group
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 ``` | ``` DomainContact domainContact3 = DomainContact._empty() 		._with(personalDataPtr.firstName(), "Max") 		._with(personalDataPtr.lastName(), "Mustermann") 		._withAppendedRepetition(allPhonesPointer, phone1) 		._withAppendedRepetition(allPhonesPointer, phone2); Assertions.assertEquals(domainContact2, domainContact3); ``` |
+```
+
+Obtain the (untyped) DocumentPointer from a Typed Pointer
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` DocumentPointer untypedFirstPhonesPointer = firstPhonePointer._unwrap(); ``` |
+```
+
+###### Architecture of Typed Overlay Classes
+
+In overlay mode, two sets of classes are generated for the group hierarchy of a DM: views and pointers.
+
+Views wrap instances of `DocumentV2` or `GroupInstanceV2` and typed pointers wrap instances of `DocumentPointer`.
+An additional kind of generated view class are enums that wrap the values of enumeration-typed fields.
+View classes correspond directly to the group (in the DM) whose instances they wrap.
+
+Pointer classes correspond to the group *to* which the pointer points.
+The classes are specific to that group (rather than to the start of the pointer) because they have a method for each of the group’s fields and subgroups, that returns an extended pointer that points to the corresponding field value or subgroup.
+Which ancestor group the pointer *starts* at, depends on the *instance* of the pointer class.
+For the compiler, the start of the pointer instance is represented by a generic type parameter of the pointer class.
+This type parameter is instantiated with the view class at which the pointer starts.
+
+For example, consider the group "Address" in the "DomainContact" DM (fullName "/Contact/Address"):
+The corresponding view class is `Address` and the class for pointers that point to the group "Address" is `PAddress<S>`.
+An instance of `PAddress` that is relative to (i.e. starts at) the document root will have the type `PAddress<DomainContact>` and wrap the DocumentPointer "Contact/Address".
+An instance that is relative to the group "Contact" will have the type `PAddress<Contact>` and wrap the `DocumentPointer` "Address".
+
+Pointer classes additionally implement the interface `TypedPointer<S, T>`, where `T` is the corresponding group’s view class (i.e. fixed) and `S` is the generic type parameter of the pointer class.
+e.g. `PAddress<S>` implements `TypedPointer<S, Address>`, and an instance with type `PAddress<DomainContact>` will be `instanceof TypedPointer<DomainContact, Address>`.
+
+Pointers to field values (as opposed to groups) do not have their own generated classes (because they need no field-specific methods), but they are instances of `TypedPointer<S, T>` so that `T` is the type of the field value and `S` is the view class of the group (or document root) at which the pointer instance starts.
+
+Now we know the necessary prerequisites to describe how type-checked pointer based (nested) read and update operations work:
+Reads: Each view class implements the method `<T> T _at(TypedPointer<S, T> pointer)`, where `S` is the type of the view class and `T` is a generic type parameter.
+Thus, the compiler will check that only pointer instances are passed to the method that do indeed start at `S` (i.e. the wrapped pointer points to a valid descendent group or field).
+The compiler can also infer the concrete return type `T` of the subgroup instance or field value that is read, based on the pointer class.
+Writes: View classes also implement the method `<T> S _with(TypedPointer<S, T> pointer, T update)`, where again `S` is the type of the view class and `T` is a generic type parameter.
+This lets the compiler check that the start of the pointer `S` matches the view class on which `_with` gets called, check the type `T` of the subgroup view or field value to be inserted, and infer the type of the returned updated group instance view (again `S`).
+Additionally, view classes have the method `_withInsertedRepetition` which is similar to `_with` but only accepts pointers to repeatable groups (they must implement `TypedRepeatableGroupPointer`) and works semantically similar to `GroupInstanceV2#withGroupRepetitionInserted`.
+
+###### Creating Instances of Views and Typed Pointers
+
+Each view class has the methods `_empty()`, which returns a view instance that wraps an empty group or document, and `_viewOf(groupOrDocInstance)`, which takes the document or group instance to be wrapped as a parameter.
+
+Pointer instances are created as follows: each *view* class has a static method `_pointer()`, which returns a pointer that *starts* at the group to which the view class corresponds.
+That pointer instance itself will also *end* at the same view class, i.e. it will have length zero, but its generated methods can be used to obtain pointers that point to subgroups and fields (and still start at the original view’s group).
+e.g. `DomainContact._pointer().contact().phones(2).phoneNumber()` will return a typed pointer instance that is `instanceof TypedPointer<DomainContact, String>` (because the PhoneNumber field has type String) and that wraps the `DocumentPointer` `"Contact/Phones[2]/PhoneNumber"`.
+Note how the repetition index of the pointer instance is specified in the call to `.phones(2)`
+In the case of repeatable groups, the parent group’s pointer class has a one-parameter method that takes the (one-based) repetition index as a parameter and returns an instance of child group’s pointer class that corresponds to a single repetition (like `phones(2)` in the example above).
+Additionally, there is an overload of the method that has no parameter; it returns a typed pointer that points to *all* repetitions of the child group and implements `TypedPointer<S, List<T>>`.
+Consequently, that pointer can be used to read or update all repetitions of the group at once, see the corresponding [code example](#typed_document_with_all_repetitions_example).
+
+Note that while the type `TypedPointer<DomainContact, List<Phones>>` is sufficient for use in reads and updates (`_at` and `_with`), the `phones()` method returns a more specific type `TypedRepetitionsPointer<DomainContact, Phones, PPhones<DomainContact>>` that additionally provides a `.get(oneBasedIndex)` method which returns a pointer to the specified repetition.
+To preserve this more specific type, we declare the variable as `var`, alternatively we could spell out the type explicitly.
+A future version of the code generator might provide a more concisely-named type here.
+
+For more examples on how to use typed views and pointers in general, see the [usage examples](#overlay_mode_usage_examples).
+
+###### Manual Code-Generation via CLI
+
+Generate Typed Accessor Classes Manually
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 ``` | ``` java -jar \     kernel-md-typed-accessor-gen-xx.x.x-TypedAccessorGenerator-CLI.jar \     --document-model-file <path-to-document-model-file> \     --package-prefix my.package.prefix.x.y.z \     --output-dir <path-to-output-directory> ``` |
+```
+
+Use the `--help` option of the CLI to find out about additional options.
+
+###### Generating Accessor Classses for Document Models with Includes
+
+The code generator supports DMs that use includes.
+In this case, if the same DM is included multiple times within the same root DM, the same accessor classes will be used for the multiple instances of the included DM, and thereby be assignable from each other.
+
+In order to generate accessor classes for a DM with includes, pass the path to the (unexpanded) root DM to the `--document-model-file` parameter, and pass the paths to all directly and indirectly included DMs via the `--additional-models` parameter.
+
+###### Automatic Code-Generation at Build Time
+
+It is recommended to automatically generate the accessor classes at build time of your project, based on the latest version of the DM.
+This has the advantage that the generated classes are always in sync with the DM, and if the DM has diverged from your code that interacts with the accessor classes, the inconsistency will be immediately detected during compilation of your code.
+
+Example Gradle Config for Automatic Generation of Typed Accessor Overlays from a DM at Build Time
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 ``` | ``` // ... (at minimum the java or java-library gradle plugins should be applied) configurations {     runTypedAccessorGeneratorConfig }  def generatedTypingsOutputDir = layout.buildDirectory.dir("generatedTypings").get().asFile  sourceSets {     generatedTypings {         java {             srcDir(generatedTypingsOutputDir)         }     }     test { // for prod code, configure the main source set rather than test         java {             compileClasspath += sourceSets.generatedTypings.output             runtimeClasspath += sourceSets.generatedTypings.output         }     } }  dependencies {      // users outside the kernel project should declare the following instead of the project dependency:     // "com.mgmtp.a12.kernel:kernel-md-document-v2:${kernelVersion}"     generatedTypingsImplementation project(':kernel-md-document-v2')      // users outside the kernel project should declare the following     // instead of the project dependency:     // runTypedAccessorGeneratorConfig group: 'com.mgmtp.a12.kernel', name: 'kernel-md-typed-accessor-gen', version: <kernelVersion>, classifier: 'TypedAccessorGenerator-CLI'     runTypedAccessorGeneratorConfig project(path: ':kernel-md-typed-accessor-gen', configuration: 'typedAccessorGeneratorCLIConfig')      // note: when --mode pojo is used for the typings generator, generatedTypingsImplementation     // needs an additional dependency on base-model-utils (for the @Experimental annotation)     testImplementation project(':kernel-md-document-v2')      // kernel-md-facade is not necessary for the typed accessors or documents themselves,     // but used here in related code that uses the accessors.     // Users outside the kernel project should declare the following instead of the project dependency:     // "com.mgmtp.a12.kernel:kernel-md-facade:${kernelVersion}"     testImplementation project(':kernel-md-facade')      // not relevant for the code generation, only used to test the code examples:     testImplementation testLibs.junitJupiter     testImplementation testLibs.junitJupiterApi      testRuntimeOnly testLibs.junitPlatformLauncher }  tasks.register('runTypedAccessorGenerator', JavaExec) {     // classpath contains only the executable jar     // kernel-md-typed-accessor-gen-xx.x.x-TypedAccessorGenerator-CLI.jar     classpath = configurations.runTypedAccessorGeneratorConfig     // specify the mainClass explicitly, because implicit spec via     // the executable jar's attributes can be unreliable     mainClass = 'com.mgmtp.a12.kernel.md.document.typed_accessor_gen.TypedAccessorGenerator'      // dmFilePath must be either a file system path, or a path that     // can be resolved from the classpath     def dmFilePath = project.projectDir.toPath().resolve(             "src/test/resources/document-models/domaincontact/DomainContact.json")     def packagePrefix = "my.generated.typings.domaincontact"      // use args '--help' for more info on the cli syntax     args '--document-model-file', dmFilePath,             '--package-prefix', packagePrefix,             '--output-dir', generatedTypingsOutputDir }  tasks.compileGeneratedTypingsJava.dependsOn(runTypedAccessorGenerator) ``` |
+```
+
+##### PoJo Classes (`--mode pojo`) *DEPRECATED*
+
+|  |  |
+| --- | --- |
+|  | PoJo mode is deprecated and planned for removal in a future release. If you are actively using it and rely on it, please contact the A12 kernel team.  PoJo mode previously was an experimental feature. Support for document-specific features like e.g. automatic handling of missing parent groups or repetitions during nested read and update is non-existing or extremely limited. |
+
+When the optional argument `--mode pojo` is passed to `TypedAccessorGenerator`, Java-Bean like PoJo classes will be generated instead of the typed views and pointers.
+
+PoJo mode classes are experimental and provide very limited document-specific support.
+They are only intended for use cases where Bean-like objects are necessary e.g. due to compatibility requirements with external frameworks.
+Projects with such use cases may test if PoJo mode would be helpful for their use case and should report to the Kernel team if they are interested in a stable version of PoJo mode.
+
+It is generally recommended to use the default `--mode overlay` instead.
+
+Usage Example: Create a Document with Generated PoJo Classes
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 ``` | ``` // DomainContact, Contact and Misc are generated classes that correspond // to the DomainContact DM and its subgroups DomainContact dc = new DomainContact(); dc.setContact(new Contact()); dc.getContact().setMisc(new Misc());  DocumentV2 untyped = dc._toUntyped();  Assertions.assertEquals( 	DocumentV2.empty("DomainContact") 		.withGroup("Contact/Misc", GroupInstanceV2.empty()), 	untyped); ``` |
+```
+
+Usage Example: Create PoJo Instances from an Untyped DocumentV2
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 ``` | ``` DocumentV2 docV2 = DocumentV2.empty("DomainContact") 		.withFieldValue("Contact/Misc/Type", "vip");  // DomainContact, Contact, Misc and Type are generated classes/enums that // correspond to the DomainContact DM and its subgroups DomainContact typedDoc = new DomainContact(docV2); Type contactType = typedDoc.getContact().getMisc().getType(); // beware of // NullPointerExceptions when chaining getters  Assertions.assertEquals(Type.vip, contactType); ``` |
+```
+
+Note that PoJo-mode classes currently need `com.mgmpt.a12.kernel:kernel-md-util` (in addition to `com.mgmpt.a12.kernel:kernel-md-document-v2`) on the compile classpath, due to the `@Experimental` annotation.
+
+#### Further Resources
+
+* Javadoc in GetA12 (e.g. for [DocumentV2](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/immutable/DocumentV2.html), [GroupInstanceV2](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/immutable/GroupInstanceV2.html) etc)
+* Usage examples can be found in the GetA12 docs in [Document Access](https://geta12.com/docs/overall/dev_tutorial_backend_document_access/index.html).
+
+##### Miscellaneous Code Examples
+
+Kernel Gradle Dependency that is used by the Code Snippets in this Guide (except Typed Accessors)
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 ``` | ``` // ... dependencies {     implementation "com.mgmtp.a12.kernel:kernel-md-facade:$kernel_version" } ``` |
+```
+
+Note that the typed accessor classes may need additional dependencies or can be used with more fine-grained Kernel dependencies, see the corresponding gradle code snippet for details.
+
+Get an IDocumentV1V2Converter
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 ``` | ``` IDocumentV1V2Converter converter = new DocumentServiceFactory( 	dmID -> null // dm resolver is not used here ).createDocumentV1V2Converter(); ``` |
+```
+
+Setup for DocumentV2 Serialization and Deserialization
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 ``` | ``` IDocumentModel myDm; // we need the DM first try (Reader dmReader = new InputStreamReader(Objects.requireNonNull( 		Thread.currentThread().getContextClassLoader().getResourceAsStream( 		"document-models/small-example-for-deserialization/MyDm.json"))) ) { 	var dmSer = new DocumentModelServiceFactory().createDocumentModelSerializer(); 	myDm = dmSer.deserialize(dmReader); } catch (IOException e) { 	throw new RuntimeException(e); } // now that we have the DM, we can create the document serializer: DocumentServiceFactory serviceFactory = new DocumentServiceFactory( 		// you'll probably want to use a "real" IDocumentModelResolver instead of the map 		Map.of("MyDm", myDm)::get); IDocumentV2Serializer serializer = serviceFactory.createDocumentV2Serializer(); Reader myReader = new StringReader(""" 	{"RGx": [ 	  { "s1": "myString", "n1": 42 }, 	  { "s1": "anotherString" } 	]}"""); java.io.Writer writer = new StringWriter(); // now we are ready to call the serializer to deserialize and serialize the document... ``` |
+```
+
+…​code snippet continued in [Serialize and Deserialize a DocumentV2](#docV2_serialize_deserialize).
+
+Fully Qualified Names of the Document V2 API Types
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 ``` | ``` import com.mgmtp.a12.kernel.md.document.apiV2.DocumentMultiPointer; import com.mgmtp.a12.kernel.md.document.apiV2.DocumentPointer; import com.mgmtp.a12.kernel.md.document.apiV2.UpdateAction; import com.mgmtp.a12.kernel.md.document.apiV2.documentchanges.Change; import com.mgmtp.a12.kernel.md.document.apiV2.documentchanges.DocumentChanges; import com.mgmtp.a12.kernel.md.document.apiV2.immutable.DocumentV2; import com.mgmtp.a12.kernel.md.document.apiV2.immutable.FieldInstanceV2; import com.mgmtp.a12.kernel.md.document.apiV2.immutable.GroupInstanceV2; import com.mgmtp.a12.kernel.md.document.apiV2.immutable.RepetitionsV2; import com.mgmtp.a12.kernel.md.document.apiV2.immutable.utils.IDocumentMergeConfig; import com.mgmtp.a12.kernel.md.document.apiV2.immutable.utils.IDocumentV2Visitor; import com.mgmtp.a12.kernel.md.document.apiV2.services.IDmAwareDocService; import com.mgmtp.a12.kernel.md.document.apiV2.services.IDocumentV1V2Converter; import com.mgmtp.a12.kernel.md.document.apiV2.services.IDocumentV2Serializer; import com.mgmtp.a12.kernel.md.document.apiV2.utils.DocumentV2Utils; import com.mgmtp.a12.kernel.md.document.apiV2.utils.DocumentV2Utils.CompareConfig; ``` |
+```
+
+Fully Qualified Names of other Types from Kernel that Occur in this Guide
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 ``` | ``` import com.mgmtp.a12.kernel.md.document.api.IDocument; import com.mgmtp.a12.kernel.md.document.api.IFieldInstance; import com.mgmtp.a12.kernel.md.document.api.services.DocumentDeserializationConfig; import com.mgmtp.a12.kernel.md.document.api.services.DocumentSerializationConfig; import com.mgmtp.a12.kernel.md.document.api.services.IDocumentFactory; import com.mgmtp.a12.kernel.md.facade.DocumentModelServiceFactory; import com.mgmtp.a12.kernel.md.facade.DocumentServiceFactory; import com.mgmtp.a12.kernel.md.model.api.IDocumentModel; import com.mgmtp.a12.model.notification.RankedNotification; import com.mgmtp.a12.utils.conversion.InstantRange; ``` |
+```
+
+### Generate validation code from document model
+
+How to generate code from a document model:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 ``` | ``` DocumentModelServiceFactory factory = new DocumentModelServiceFactory(); com.mgmtp.a12.kernel.md.model.api.services.IDocumentModelService docModelService = factory.createDocumentModelService();  // using Java as the target language IValidationCodeGeneratorConfig validationCodeGeneratorConfig = 		() -> IValidationCodeGeneratorConfig.ProgrammingLanguage.JAVA; ArrayList<RankedNotification> notifications = new ArrayList<>(); // the code as a zip file byte array byte[] code = docModelService.generateValidationCode(docModel, validationCodeGeneratorConfig, 		null, notifications::add);  // store `code` to a zip file and extract the java source files ``` |
+```
+
+The generated code also contains gradle build scripts to compile the code:
+
+* navigate to the output directory (in this case `build/generatedCode`)
+* call gradle (version 7+) with: `gradle build`
+* the jar can then be found in `build/libs/generatedCode.jar`
+
+There is no such an API provided by Kernel in TypeScript.
+
+### Validating a document / Computations on a document
+
+|  |  |
+| --- | --- |
+|  | For details on the special validation mode Partial Validation (intended for quick pre-checks of individual form pages), see the section on Full Validation and Partial Validation in the Kernel modeling documentation, and the description of the method `validatePart`. |
+
+#### Java
+
+The structure of a document can be compared to a given document model with
+[`IDmAwareDocService#checkStructuralConsistencyWithDm`](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/md/document/apiV2/services/IDmAwareDocService.html#checkStructuralConsistencyWithDm(com.mgmtp.a12.kernel.md.document.apiV2.immutable.DocumentV2,java.util.function.Consumer)).
+
+In Java you have two options to validate a document or compute on a document: either the dynamic or the static solution.
+With the dynamic solution, the necessary code is generated and compiled as part of the corresponding call (if it has not already been cached).
+With the static solution, however, the code must have been generated and compiled for the document model in advance and be available in the classpath.
+
+The dynamic solution is usually used because it involves less integration effort.
+With the static solution, on the other hand, the first call is much faster.
+Especially if many document models are used in an application, the start phase of the application can be significantly accelerated.
+
+The usage of both solutions is very similar you just have to implement different sub-interfaces of *IDocumentServiceConfig* - either *IDocumentDynamicServiceConfig* or *IDocumentStaticServiceConfig*.
+
+First, an example of implementing *IDocumentDynamicServiceConfig* to use the dynamic solution:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 ``` | ``` // Your own implementation of IModelCodeCache // An appropriate implementation prevents the document model code from being regenerated, // compiled, and instantiated. IModelCodeCache cache = new IModelCodeCache() { 	private final ConcurrentMap<String, IModelCode> genCodeCache = new ConcurrentHashMap<>();  	@Override 	public IModelCode getModelCode(@NonNull String modelCodeId) { 		return genCodeCache.get(modelCodeId); 	}  	@Override 	public void addModelCode(@NonNull String modelCodeId, @NonNull IModelCode modelCode) { 		genCodeCache.put(modelCodeId, modelCode); 	} };  // Your own implementation of IDocumentDynamicServiceConfig, consider using 'cache' from above IDocumentDynamicServiceConfig config = new IDocumentDynamicServiceConfig() { 	@Override 	public Optional<String> getVariant() { 		return Optional.empty(); // not supported in A12 	}  	@Override 	public IModelCodeCache getCache() { 		return cache; 	}  	@Override 	public Optional<ILabelProvider> getLabelProvider() { 		return Optional.empty(); // for details see JavaDoc 	} }; ``` |
+```
+
+Next, an example of implementing *IStaticModelCodeCache* to use the static solution:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 ``` | ``` // Your own implementation of IStaticModelCodeCache // An appropriate implementation prevents the code for the document model // from being instantiated again. final IStaticModelCodeCache cache = new IStaticModelCodeCache() { 	private final Map<String, IStaticModelCode> map = Collections.synchronizedMap(new HashMap<>());  	@Override public IStaticModelCode getModelCode(@NonNull String modelCodeIdentifier) { 		return map.get(modelCodeIdentifier); 	}  	@Override public void addModelCode(@NonNull String modelCodeIdentifier, @NonNull IStaticModelCode modelCode) { 		map.put(modelCodeIdentifier, modelCode); 	} };  // Your own implementation of IDocumentDynamicServiceConfig, consider using 'cache' from above IDocumentStaticServiceConfig config = new IDocumentStaticServiceConfig() { 	@Override 	public Optional<String> getVariant() { 		return Optional.empty(); // not supported in A12 	}  	@Override 	public Optional<IStaticModelCodeCache> getCache() { 		return Optional.of(cache); 	}  	@Override 	public Optional<ILabelProvider> getLabelProvider() { 		return Optional.empty(); // for details see JavaDoc 	}  	@Override 	public Optional<String> getModelPackage(String documentModelId) { 		return Optional.empty(); // for details see JavaDoc 	} }; ``` |
+```
+
+With the desired configuration (either dynamic or static) a document can be validated against the field definitions and rules being specified in the corresponding document model as follows (the use of validation and computation is very similar, therefore only one is described):
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 ``` | ``` // Your own implementation of IDocumentModelResolver IDocumentModelResolver dmResolver = new IDocumentModelResolver() { 	@Override 	public IDocumentModel getDocumentModelById(@NonNull String id) { 		return TODO; // for details see JavaDoc 	} };  // A shorter form is also possible: { 	IDocumentModelResolver dmResolver2 = id -> { 		return TODO; // for details see JavaDoc 	}; }  DocumentRtServiceFactory rtFactory = new DocumentRtServiceFactory(dmResolver); IDocumentRtService docRtService = rtFactory.createDocumentRtService(config); IDocumentValidationResult docValResult = docRtService.validateFull(document, DocumentProcessingConfig.builder(Locale.ENGLISH).build()); ``` |
+```
+
+#### TypeScript
+
+For TypeScript, there is a similar functionality for validation or computation services using the document layer.
+For a detailed explanation and capabilities, have a look at the
+[Typedoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/typescript/modules/Document_model_and_document_facade.html).
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 ``` | ``` // Load the generated code of a document model const _genCodePath = Path.join(__dirname, "..", "resources", "dm", "TestModelMDAPI.js"); const js = Fs.readFileSync(_genCodePath, "utf8"); // The entire content of the generated code (.js file) const genCodeAccessor = new GeneratedCodeAccessorFactory().createScriptAccessor(js);  // Create an instance of the service to validate and compute const documentRtService = DocumentRtServiceFactory.createDocumentRtService(genCodeAccessor);  // The document to validate const document = {     base: {         Computations: {             Purchase: [                 { Quantity: 2, Price: 1.23 },                 { Quantity: 4, Price: 9.99 },                 { Quantity: 7 }             ]         }     } };  // Optional: additional field instances can be provided to the validation const additionalFieldInstances = new Map([     [         [             { elementName: "base", index: 1 },             { elementName: "Computations", index: 1 },             { elementName: "Purchase", index: 3 },             { elementName: "Price", index: 1 }         ],         "4.56"     ] ]);  // Call validation, either full or partial validation with given relevantEntityInstances const validationResult = documentRtService.validateFull(document, additionalFieldInstances);  // Interpret validation result  // Call computation const computationResult = documentRtService.compute(document);  // Update document with computed fields const updatedDocument = computationResult.appliedTo(document);  // Use the new updated document ``` |
+```
+
+|  |  |
+| --- | --- |
+|  | If the use of `eval` should be avoided in your project, please consult the E&C- or Kernel-team. |
+
+### Migration of document models
+
+In addition to the [Migration tool](#_migration_tool), it is also possible to migrate document models programmatically to a desired target version using *IDocumentModelMigrator*.
+This is useful when models from older A12 versions should be able to be used.
+The following code snippet shows how one could use this service.
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 ``` | ``` // Your own implementation of ICustomMigrationConfig ICustomMigrationConfig myCustomConfig = new ICustomMigrationConfig() { 	@Override 	public Optional<ICustomMigrationCode> getCustomCodeBefore(@NonNull String targetVersion) { 		return Optional.empty(); // Your implementation 	}  	@Override 	public Optional<ICustomMigrationCode> getCustomCodeAfter(@NonNull String targetVersion) { 		return Optional.empty(); // Your implementation 	}  	@Override 	public @NonNull TimeZone getTimezone(@NonNull String modelId) { 		return TimeZone.getTimeZone("UTC"); // Your implementation 	} };  IDocumentModelMigrator migrator = new DocumentModelServiceFactory().createDocumentModelMigrator(myCustomConfig);  // A collection of deserialized DMs Collection<String> docModelsToMigrate = List.of( 		// add your models here );  // targetVersion is the version to which the model must be migrated to. Collection<IDocumentModelMigratorResult> migrationResult = migrator.migrate(docModelsToMigrate, targetVersion); ``` |
+```
+
+## Mapping
+
+This chapter describes how to generate executable code from the already modeled mapping and how to execute it.
+
+**Demarcations:**
+
+* For information on modeling the mapping, please refer to the relevant documentation for modelers.
+* There is only executable mapping code for server-side use.
+
+### Obtaining an IMappingService
+
+#### Static
+
+It is possible to generate Java code for a mapping model and integrate it
+statically, meaning the generated code must be compiled by the user before use
+in the application.
+
+#### Dynamic
+
+|  |  |
+| --- | --- |
+|  | The dynamic mapping API is currently experimental and may still change in a breaking way in future releases. |
+
+It is possible to obtain an `IMappingService` ([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/mapping/rt/api/IMappingService.html)) by dynamically generating
+mapping code at runtime. This can be achieved on-the-fly via
+`MappingServiceFactory#createMappingServiceFromDynamicCode` ([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/mapping/facade/MappingServiceFactory.html)).
+
+##### CLI to generate static mapping source code
+
+The executable library *kernel-md-datatransfer-codegen-<Kernel
+version>-MappingCodeGenerator-CLI.jar* can be used to generate Java code for
+static integration.
+Please execute the command `java -jar kernel-md-datatransfer-codegen-<Kernel
+version>-MappingCodeGenerator-CLI.jar`
+to see how to use the artifact.
+The output is a ZIP archive that contains the generated mapping code as well as gradle files which are needed to compile the code, see next section.
+
+##### Compile mapping source code
+
+The ZIP archive that has been generated by the CLI contains the generated
+mapping code as well as gradle files in its root directory for easy compilation.
+To compile, please unpack the ZIP archive into an empty folder and execute the
+command `gradle build`.
+
+##### Obtain static-code-based IMappingService
+
+The description of how to use the mapping code assumes that the mapping code has
+been generated and compiled according to the previous chapter and is now
+available in the runtime classpath of the application.
+The `MappingServiceFactory`
+([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/mapping/facade/MappingServiceFactory.html))
+provides an instance of the `IMappingService`
+([javadoc](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/mapping/rt/api/IMappingService.html))
+that can be used to execute the mapping.
+
+Instantiate a static MappingService
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 ``` | ``` // Obtain a static IMappingService based on the mapping code that was previously generated // for the specified package name, compiled and put on the runtime classpath IMappingService mappingService = MappingServiceFactory.createMappingServiceFromStaticCode( 		StaticMappingServiceConfig.of("some.packageprefix.for_the.generated.mapping_code", 				documentRtService)); ``` |
+```
+
+### Using the mapping service
+
+With the above example, we obtain the following updated target document and
+mapping result metadata:
+
+Use an IMappingService
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 ``` | ``` // Given some initial data for source documents and target document: DocumentV2 sourceDoc1 = DocumentV2.empty("example_source_DM_for_docs") 		.withFieldValue("/SourceRG/someFieldInSource", "valueFromSource1"); DocumentV2 sourceDoc2 = DocumentV2.empty("example_source_DM_for_docs") 		.withFieldValue("/SourceRG/someFieldInSource", "valueFromSource2"); DocumentV2 targetDoc = DocumentV2.empty("example_target_DM_for_docs");  // 1) we assume we already have an IMappingService mappingService (static or dynamic)  // 2) Wrap the source DocumentV2s as SourceDocument, with some additional info that is //    needed for the mapping: //    - sourceName (because a Mapping can specify multiple different sources, identified //      by their sourceName) //    - sourceInstanceId (an arbitrary unique id that is used to identify this source //      instance in metadata that is available in the MappingResult) List<SourceDocument> sourceInstances = List.of( 		SourceDocument.of("Source1", "idForSourceInstance1", sourceDoc1), 		SourceDocument.of("Source1", "idForSourceInstance2", sourceDoc2) );  // 3) Perform the mapping and obtain the resulting updated target document MappingResult mappingResult = mappingService.transferData(sourceInstances, targetDoc, 		DocumentProcessingConfig.builder(Locale.GERMANY).build()); DocumentV2 updatedTargetDoc = mappingResult.applyTo(targetDoc); ``` |
+```
+
+The `MappingResult` also contains some additional metadata.
+
+Some Properties of the Above Mapping Result
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 ``` | ``` Assertions.assertEquals(     DocumentV2.empty("example_target_DM_for_docs")         .withFieldValue("/RGTarget[1]/someFieldInTarget", "valueFromSource1_precomputedSuffix")         .withFieldValue("/RGTarget[2]/someFieldInTarget", "valueFromSource2_precomputedSuffix"),     updatedTargetDoc );  Assertions.assertEquals(     List.of(         MappedField.of(DocumentPointer.of("/RGTarget[1]/someFieldInTarget"), "valueFromSource1_precomputedSuffix",             Set.of(SourceField.of("idForSourceInstance1", DocumentPointer.of("SourceRG/someFieldInSource")))),         MappedField.of(DocumentPointer.of("/RGTarget[2]/someFieldInTarget"), "valueFromSource2_precomputedSuffix",             Set.of(SourceField.of("idForSourceInstance2", DocumentPointer.of("SourceRG/someFieldInSource"))))     ),     mappingResult.mappedFields()         .stream().sorted(Comparator.comparing(MappedField::targetField)).toList());  Assertions.assertTrue(mappingResult.sourceEligibilityResults().get("idForSourceInstance1").sourceWasIncludedInMapping()); Assertions.assertTrue(mappingResult.sourceEligibilityResults().get("idForSourceInstance2").sourceWasIncludedInMapping());  Assertions.assertTrue(mappingResult.success()); ``` |
+```
+
+## Extension points
+
+### Custom Field Type
+
+*Custom Field Types* can be used for a project-specific field validation that cannot be adequately checked using regular expressions, etc., because, for example, a check digit procedure is used.
+Examples are credit card number, insurance number, IBAN, BIC. The implementation must be provided by the user for Java and TypeScript.
+
+|  |  |
+| --- | --- |
+|  | The Kernel validation and thus especially *Custom Field Types* (as part of it) are designed exclusively for the validation of values of a document. Further validations should be implemented at the appropriate extension point (e.g. see the documentation of Data Services for the backend or Form Engine for the frontend). The interface is intended for fast, synchronous validations. More time-consuming validations or those that require access to third-party systems should not be placed here. |
+
+**Example:**
+It is required to model a field for a credit card number with a specific validation.
+In this case you can use *Custom Field Type* as follows:
+
+#### Create a field of type *Custom*
+
+With the A12 SME, you can create a field of type *Custom* and give it a name, e.g. "MyCreditCardNumber".
+
+#### Implement your own logic
+
+In the Java-project, define the dependency to `com.mgmtp.a12.kernel:kernel-core-customfieldtype-api` and implement the validation logic
+(if your code depends on `com.mgmtp.a12.kernel:kernel-md-facade` it is already available as a transient dependency):
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 ``` | ``` class CheckCreditCardNumber implements ICustomFieldValidator { 	@Override 	public @NonNull Optional<ICustomFieldTypeCheckError> validate( 			@NonNull String value, 			@NonNull ICustomFieldTypeValidationParam valParam, 			boolean isDisplayValue 	) { 		if (!isValidCreditCardNumber(value)) { 			return createError(valParam.getErrorMsgLocale()); 		} 		return Optional.empty(); 	}  	private static boolean isValidCreditCardNumber(@NonNull String value) { 		return value.replaceAll("\\s+", "").matches("^\\d{8,19}$"); 	}  	private static Optional<ICustomFieldTypeCheckError> createError(@NonNull Locale locale) { 		return Optional.of(new ICustomFieldTypeCheckError() { 			@Override 			public @NonNull String getErrorMessage() { 				return switch (locale.getLanguage()) { 					case "de" -> "Eine Kreditkartennummer muss aus 8 bis 19 Ziffern bestehen."; 					case "en" -> "A credit card number must consist of 8 to 19 digits."; 					default -> "Unknown locale."; // in a non-test setting falling back to English would be better 				}; 			}  			@Override 			public @NonNull String getErrorKey() { 				return "invalidCreditCardNumber"; 			} 		}); 	} } ``` |
+```
+
+In TypeScript, implement the same validation logic as in Java (APIs are included in `@com.mgmtp.a12.kernel/kernel-md-facade`):
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 ``` | ``` class CheckCreditCardNumber implements ICustomFieldValidator {     validate(value: string, valParam: ICustomFieldTypeValidationParam, isDisplayValue: boolean): ICustomFieldTypeCheckError | undefined {         if (!isValidCreditCardNumber(value)) {             return customFieldTypeCheckError("invalidCreditCardNumber", [{                 key: "invalidCreditCardNumber",                 defaults: {                     en: "A credit card number must consist of 8 to 19 digits.",                     de: "Eine Kreditkartennummer muss aus 8 bis 19 Ziffern bestehen.",                 }             }]);         }         return undefined;     }      convertDisplay2Internal(displayValue: string): ICustomFieldTypeConversionResult {         return customFieldTypeConversionResult(displayValue); // a no-op conversion is usually sufficient     }      convertInternal2Display(internalValue: string): ICustomFieldTypeConversionResult {         return customFieldTypeConversionResult(internalValue); // a no-op conversion is usually sufficient     } } ``` |
+```
+
+#### Create your *Custom Field Type Factory*
+
+A *Custom Field Type Factory* defines the mapping between the name specified for the *Custom Field Type* (in this example "MyCreditCardNumber") and the corresponding *Custom Field Validator*.
+
+In Java:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 ``` | ``` // option 1: implement the interface ICustomFieldTypeFactory class MyCustomFieldTypeFactory implements ICustomFieldTypeFactory { 	@Override 	public Optional<ICustomFieldValidator> createCustomFieldValidator(String customFieldTypeName) { 		if (customFieldTypeName.equals("MyCreditCardNumber")) { 			// E.g. for 'MyCreditCardNumber' an instance of 'CheckCreditCardNumber' must be created and returned 			return Optional.of(new CheckCreditCardNumber()); 		} 		return Optional.empty(); 	} }  // option 2: use the simplified factory method ICustomFieldTypeFactory.fromMap(Map.of( 		"MyCreditCardNumber", new CheckCreditCardNumber() )); ``` |
+```
+
+In TypeScript:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 ``` | ``` // option 1: implement the interface ICustomFieldTypeFactory class MyCustomFieldTypeFactory implements ICustomFieldTypeFactory {     createCustomFieldType(customFieldTypeName: string): ICustomFieldValidator | null {         if (customFieldTypeName == "MyCreditCardNumber") {             return new CheckCreditCardNumber();         }         return null;     } }  // option 2: use the simplified factory method createSimpleCustomFieldTypeFactory({     "MyCreditCardNumber": new CheckCreditCardNumber() }); ``` |
+```
+
+#### Provide your *Custom Field Type Factory*
+
+In Java:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 ``` | ``` // configure the custom field type factory in the DocumentProcessingConfig DocumentProcessingConfig processingConfig = DocumentProcessingConfig.builder(Locale.ENGLISH) 		.customFieldTypeFactory(new MyCustomFieldTypeFactory()) 		.build(); // use this DocumentProcessingConfig for API calls (validation/computation/mapping/...) IDocumentValidationResult validationResult = documentRtService.validateFull(document, processingConfig); ``` |
+```
+
+In TypeScript:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 ``` | ``` // configure the custom field type factory when creating the DocumentRtService const documentRtService = DocumentRtServiceFactory.createDocumentRtService(genCodeAccessor, {     customFieldTypeFactory: new MyCustomFieldTypeFactory(), }); // use this DocumentRtService for validation/computation const validationResult = documentRtService.validateFull(document); ``` |
+```
+
+**Note for validation/computation in TypeScript:** If there is a difference between the display value and the internal value for the defined custom field type and if you are working with the display value, make sure to configure the corresponding presentation information by adding one of the following keys (for more information see the documentation of the class *DataFormats*):
+
+* convertCustomFieldTypesList
+* convertCustomFieldTypesAll
+
+#### Custom error messages for custom field types
+
+If custom field types provided by Kernel can be used, but associated error messages are either inappropriate for the project or do not exist in the necessary locale, they can be provided by the project.
+A description of this can be found at [Custom Error Messages](#_custom_error_messages).
+
+### Custom Condition
+
+If the validation language does not provide the power to express the desired validation rule, *CustomCondition* may be used in the condition text instead.
+If a *custom condition* is used in a condition text, an implementation of the interface *ICustomConditionFactory* must be provided by the user.
+Please use *CustomCondition* only after careful consideration.
+If exactly one field is relevant for the condition then use [Custom Field Type](#_custom_field_type) instead.
+
+**Attention:**
+The Kernel validation and thus especially *Custom Condition* (as part of it) are designed exclusively for the validation of values of a document.
+Further validations should be implemented at the appropriate extension point (e.g. see the documentation of Data Services for the backend or Form Engine for the frontend).
+The interface is intended for fast, synchronous validations.
+More time-consuming validations or those that require access to third-party systems should not be placed here.
+
+|  |  |
+| --- | --- |
+|  | The *CustomCondition* is always exactly adapted to the specific case as it is not possible to pass parameters to the *CustomCondition*. Therefore the *CustomCondition* has to know which fields/groups are relevant to check. The implementation must be provided by the user for Java **AND** TypeScript. |
+
+#### Create a rule that specifies the *custom condition*
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` FieldFilled(id) AND CustomCondition NotReverse ``` |
+```
+
+|  |  |
+| --- | --- |
+|  | When a `CustomCondition` is used in the error conditions then the name of the custom condition might be inverted and describes when an error should be displayed.  Thus, if we want to check if a string is reversed then the custom error condition could be called "NotReverse". |
+
+#### Implement your *Custom Condition*
+
+In Java (on the example `"NotReverse"`):
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 ``` | ``` class IsNotReverseCustomCondition implements ICustomCondition { 	private final Set<String> fieldPaths;  	/** 	 * Uses two paths of fields that have to be compared 	 */ 	public IsNotReverseCustomCondition(String fieldPath1, String fieldPath2) { 		this.fieldPaths = Set.of(fieldPath1, fieldPath2); 	}  	@Override public boolean check(@NonNull DocumentV2 document, 			Set<? extends DocumentMultiPointer> relevantEntities, 			@NonNull Set<DocumentPointer> formallyIncorrectEntities, 			@NonNull PartiallyKnownDocumentMultiPointer errorEntityInstance) { 		// a) necessary fields are in relevantEntityInstances OR all fields are relevant 		if (relevantEntities != null && relevantEntities.stream().anyMatch(fi -> !this.fieldPaths.contains(fi.fullName()))) { 			return false; 		}  		// b) necessary fields not in formallyIncorrectEntityInstances 		if (formallyIncorrectEntities.stream().anyMatch(fi -> this.fieldPaths.contains(fi.fullName()))) { 			return false; 		}  		// c) condition 		List<String> values = fieldValuesFromDocument(document); 		String field1 = values.get(0); 		String field2 = values.get(1);  		return !field1.equals(new StringBuilder(field2).reverse().toString()); 	}  	private List<String> fieldValuesFromDocument(DocumentV2 document) { 		return this.fieldPaths.stream() 				.map(fieldPath -> 						Optional.ofNullable(document.fieldValue(fieldPath)).map(Object::toString).orElse("")) 				.toList(); 	}  	public Set<String> getFieldPaths() { 		return fieldPaths; 	} } ``` |
+```
+
+In TypeScript:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 ``` | ``` class IsNotReverseCustomCondition implements ICustomCondition {     private readonly _documentService = new DocumentServiceFactory().getDocumentService();     private _fieldPaths: ModelPath[];     private _searchPaths: EntityInstancePath[];      constructor(         fieldPath1: ModelPath,         fieldPath2: ModelPath,     ) {         this._fieldPaths = [fieldPath1, fieldPath2];         this._searchPaths = this._fieldPaths.map(path => path.map(({ elementName }) => ({ elementName, index: 0 })));     }      public check(         document: Document,         _documentModelId: string,         relevantEntityInstances: EntityInstancePath[] | undefined,         formallyIncorrectEntityInstances: EntityInstancePath[],         _errorEntityInstance: EntityInstancePath,         _valuesOfFieldInstancesToConsider: EntityInstanceValueMapping | undefined     ): boolean {         // a) necessary fields are in relevantEntityInstances OR all fields are relevant         if (relevantEntityInstances !== undefined && relevantEntityInstances.every(relevantEntity =>             this._fieldPaths.some(field => ModelPath.equal(field, relevantEntity))         )) {             return false;         }          // b) necessary fields not in formallyIncorrectEntityInstances         if (formallyIncorrectEntityInstances.some(formallyIncorrectEntity =>             this._fieldPaths.some(field => ModelPath.equal(field, formallyIncorrectEntity))         )) {             return false;         }          // c) condition         const fieldValues = this._fieldValuesFromDocument(document);         if (fieldValues == null) {             return false;         }          const [field1, field2] = fieldValues;         return field1 !== field2.split('').reverse().join('');     }      private _fieldValuesFromDocument(         document: Document     ): string[] | null {         const instancesByField = this._searchPaths.map(searchPath =>             this._documentService.getEntityPathsInDocument(document, searchPath));         if (instancesByField.some(fieldInstances => fieldInstances.length !== 1)) {             return null;         }          const fieldValues = instancesByField.map(([fieldInstance]) =>             this._documentService.getAssignedObject(document, fieldInstance));         if (fieldValues.some(fieldValue => typeof fieldValue !== "string")) {             return null;         }          return <string[]>fieldValues;     } } ``` |
+```
+
+|  |  |
+| --- | --- |
+|  | It is necessary to implement similar logic in Java and TypeScript to support fast data validation in the user frontend (with TypeScript) and a *final* check in the Java server. |
+
+#### Implement your *Custom Condition Factory*
+
+In Java:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 ``` | ``` // option 1: implement the interface ICustomConditionFactory class MyCustomConditionFactory implements ICustomConditionFactory { 	@Override 	public Optional<ICustomCondition> createCustomConditionV2(@NonNull String customConditionName) { 		return Optional.ofNullable(switch (customConditionName) { 			case "NotReverse" -> new IsNotReverseCustomCondition("/Group1/Field1", "/Group1/Field2"); 			case "NotReverse2" -> new IsNotReverseCustomCondition("/Group1/Field1", "/Group1/Field3"); 			default -> null; 		}); 	} }  // option 2: use the simplified factory method ICustomConditionFactory.fromMap(Map.of( 		"NotReverse", new IsNotReverseCustomCondition("/Group1/Field1", "/Group1/Field2"), 		"NotReverse2", new IsNotReverseCustomCondition("/Group1/Field1", "/Group1/Field3") )); ``` |
+```
+
+In TypeScript:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 ``` | ``` // option 1: implement the interface ICustomConditionFactory class IsNotReverseCustomConditionFactory implements ICustomConditionFactory {     public createCustomCondition(customConditionName: string): ICustomCondition | null {         switch (customConditionName) {             case "NotReverse":                 return new IsNotReverseCustomCondition(                     [{ elementName: "Group1" }, { elementName: "Field1" }],                     [{ elementName: "Group1" }, { elementName: "Field2" }],                 );             case "NotReverse2":                 return new IsNotReverseCustomCondition(                     [{ elementName: "Group1" }, { elementName: "Field1" }],                     [{ elementName: "Group1" }, { elementName: "Field3" }],                 );             default:                 return null;         }     } }  // option 2: use the simplified factory method createCustomConditionFactory({     "NotReverse": new IsNotReverseCustomCondition(         [{ elementName: "Group1" }, { elementName: "Field1" }],         [{ elementName: "Group1" }, { elementName: "Field2" }],     ),     "NotReverse2": new IsNotReverseCustomCondition(         [{ elementName: "Group1" }, { elementName: "Field1" }],         [{ elementName: "Group1" }, { elementName: "Field3" }],     ), }) ``` |
+```
+
+#### Provide your implementation of *ICustomConditionFactory*
+
+To provide access to your custom condition implementation at runtime, the custom condition factory must be provided to the respective APIs.
+
+In Java:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 ``` | ``` // configure the custom condition factory in the DocumentProcessingConfig DocumentProcessingConfig config = DocumentProcessingConfig.builder(Locale.ENGLISH) 		.customConditionFactory(new MyCustomConditionFactory()) 		.build(); // use this DocumentProcessingConfig for API calls (validation/computation/mapping/...) IDocumentValidationResult validationResult = documentRtService.validateFull(document, config); ``` |
+```
+
+In TypeScript:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 2 3 4 5 6 ``` | ``` // configure the custom condition factory when creating the DocumentRtService const documentRtService = DocumentRtServiceFactory.createDocumentRtService(genCodeAccessor, {     customConditionFactory: new IsNotReverseCustomConditionFactory(), }); // use this DocumentRtService for validation/computation const validationResult = documentRtService.validateFull(document); ``` |
+```
+
+### Migration tool
+
+The JSON structure of the document model is versioned independently of the Kernel version.
+If there is a breaking change in that JSON structure, a new major version of the document model (DM-version) is created.
+The migration tool is a command line tool which can be used to migrate document models from a DM-version to the DM-version which is supported by the used Kernel version.
+
+With every new Kernel release, there will be an indication in the section "Migration instructions" in the developer documentation at getA12.com whether a migration is necessary and how it can be executed.
+Normally, the execution follows the pattern:
+
+* Download the artifact `kernel-tool-model-migration-<kernel_version>-jar-with-dependencies.jar`
+* Execute `java -jar kernel-tool-model-migration-<kernel_version>-jar-with-dependencies.jar -h` to see how to use the artifact
+
+It is possible to change the behavior of the logging by providing a custom log4j properties file.
+To do so, you need to pass the URI of the configuration file as a JVM argument.
+
+`java -Dlog4j.configuration={URI of your log4j configuration file} -jar <artifact name from above>`
+
+### Analysis tool
+
+|  |  |
+| --- | --- |
+|  | This tool should only be called on request. It is not necessary to call this tool on every new release.  Sometimes it is necessary to check the compatibility of the existing document models against a certain Kernel version which contains at least one new feature compared to the current used Kernel version. In order to achieve this, one should extend *BaseTestDocumentModelConsistency.java* and override the method *testData()* (for more information see also the Javadoc of [BaseTestDocumentModelConsistency.java](https://geta12.com/docs/2025.06/ext5/kernel/kernel-documentation-dev/assets/doc/java/com/mgmtp/a12/kernel/tool/docanalysis/BaseTestDocumentModelConsistency.html)). |
+
+**Example**
+
+With [A12K-774], Kernel made the parser more strict and an error was reported for rules like:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` FieldNotFilled(X) ``` |
+```
+
+With the analysis tool, the user is able to check if the current existing document models are still valid after this change.
+
+#### Extension of *BaseTestDocumentModelConsistency.java*:
+
+```
+|  |  |
+| --- | --- |
+| ```  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 ``` | ``` public class DocumentModelConsistencyCheck extends BaseTestDocumentModelConsistency { 	private static final HeaderParser HEADER_PARSER = new DefaultHeaderParser(); 	private static final DocumentModelServiceFactory DOC_MODEL_SERVICE_FACTORY = new DocumentModelServiceFactory(); 	private static final IDocumentModelSerializer DOC_MODEL_SERIALIZER = DOC_MODEL_SERVICE_FACTORY.createDocumentModelSerializer(); 	private static final IDocumentModelService DOC_MODEL_SERVICE = DOC_MODEL_SERVICE_FACTORY.createDocumentModelService(); 	private static final Path DOC_MODELS_PATH = TODO.PATH; // set your path here  	@Override 	public Stream<Arguments> testData() throws IOException { 		try (Stream<Path> files = Files.walk(DOC_MODELS_PATH)) { 			Stream<Arguments> argumentsStream = files.filter(path -> path.toFile().isFile()) 					.filter(path -> path.getFileName().toString().endsWith(".json")) 					.filter(DocumentModelConsistencyCheck::isDocumentModel) 					.map(path -> Arguments.of(path.toString(), deserializeAndExpand(path))); 			// creating a new stream, so the file walker can be closed 			return argumentsStream.toList().stream(); 		} 	}  	private static boolean isDocumentModel(Path path) { 		Optional<String> optDocModelJson = readToString(path); 		if (optDocModelJson.isEmpty()) { 			return false; 		} 		Optional<Header> optHeader = parseHeader(optDocModelJson.get()); 		if (optHeader.isEmpty()) { 			return false; 		} 		return "document".equals(optHeader.get().getModelType()); 	}  	private static Optional<String> readToString(Path path) { 		try (Scanner scanner = new Scanner(path, StandardCharsets.UTF_8)) { 			return Optional.of(scanner.useDelimiter("\\A").next()); 		} catch (Exception e) { 			return Optional.empty(); 		} 	}  	private static Optional<Header> parseHeader(String docModelJson) { 		try { 			return Optional.of(HEADER_PARSER.parseJson(docModelJson)); 		} catch (HeaderParseException e) { 			return Optional.empty(); 		} 	}  	private static IDocumentModel deserializeAndExpand(Path docModelPath) { 		IDocumentModel docModel = deserialize(docModelPath); 		IDocumentModelReferenceResolver resolver = new DocumentModelReferenceResolverImpl(docModelPath.getParent()); 		DOC_MODEL_SERVICE.expand(docModel, resolver); 		return docModel; 	}  	private static IDocumentModel deserialize(Path docModelPath) { 		try (Reader reader = new FileReader(docModelPath.toFile(), StandardCharsets.UTF_8)) { 			return DOC_MODEL_SERIALIZER.deserialize(reader); 		} catch (IOException e) { 			throw new UncheckedIOException( 					String.format("Could not load model from file '%s'.", docModelPath.toAbsolutePath()), e); 		} 	}  	static class DocumentModelReferenceResolverImpl implements IDocumentModelReferenceResolver { 		private final Path basePath;  		public DocumentModelReferenceResolverImpl(Path basePath) { 			this.basePath = basePath; 		}  		@Override 		public IDocumentModel getDocumentModel(@NonNull String modelReference) { 			Path filePath = basePath.resolve(modelReference); 			return deserialize(filePath); 		} 	} } ``` |
+```
+
+Finally, this class can be executed as regression check in jenkins.
+
+### Localization
+
+Localization is currently implemented in TypeScript only.
+In Java, you can only change the error messages of formal errors and custom field types, see [Custom Error Messages](#_custom_error_messages).
+Localization is generally described in *A12 Localization Documentation* in project Utils.
+With localization, you can add new languages or change the values for an existing language.
+This can be done for error messages, labels or enumeration UI-values.
+
+#### Localization of error messages
+
+Error messages come in four flavors:
+
+* formal error messages
+* rule error messages
+* field error messages, and
+* custom field type error messages
+
+For general information on how to customize localization please refer to the `Customization` chapter of the *A12 Localization Documentation* in project Utils.
+
+##### Formal error messages
+
+The complete key used for localization of formal errors is `kernel.formalErrors.<FormalErrorKey>`.
+The valid values for `FormalErrorKey` used by Kernel are defined in `RuntimeFormalErrorEnum`, as well as the special key constants `DIVISION_BY_ZERO_INVALID` and `ERROR_DURING_DATA_CHECK_EVAL`.
+For example, in order to add a spanish error message for the `FormalErrorKey` `ZAHL_MIT_UNGUELTIGEN_ZEICHEN_ONK`, you would have to map the localization key
+`kernel.formalErrors.ZAHL_MIT_UNGUELTIGEN_ZEICHEN_ONK` to something like `"Sólo se permiten valores enteros."`.
+
+For the locales `de`, `en`, `fr`, and `nl` the maps from `FormalErrorKey` to the default error message are exported in corresponding bundles of the same name.
+The exported `defaultResourceProvider` additionally offers a way to access the messages for all these locales.
+
+##### Rule error messages
+
+The key for rule error messages is `documentModel.ruleErrorMessage.<modelId>.<ruleFullPath>`.
+Here `modelId` is the id of the model as specified in the header of the document model.
+Dots and backslashes have to be encoded in the model id as specified in the *A12 Localization Documentation*.
+`ruleFullPath` is the path to the rule in the document model tree separated by dots.
+For a rule `/rootGroup/group1/group2/rule1` in a model with id `dm.1` you would have the key
+`documentModel.ruleErrorMessage.dm\p1.rootGroup.group1.group2.rule1`.
+
+The parameters, which can be replaced in the rule error message coming from the validation result, are bound by the parameters actually used in the corresponding original error text specified in the document model for the rule.
+
+##### Field error messages
+
+Field error messages are the error messages that are presented when the validation of a string field with pattern or an enumeration field fails.
+The respective key is `documentModel.fieldErrorMessage.<modelId>.<fieldFullPath>`.
+Again, `modelId` is the id of the document model. `FieldFullPath` now is the full path of the field in the document model.
+
+For enumeration error messages, if no error message is defined, the formal error message with the formal error key
+`ENUMERATION_DEFAULT_ERROR` is used:
+`kernel.formalErrors.ENUMERATION_DEFAULT_ERROR`.
+
+##### Custom field type error messages
+
+For your own custom field type implementation, you have to specify your own keys.
+For the implementations which Kernel provides, the keys are of the form `kernel.customTypeErrors.<CustomErrorType>`.
+The CustomErrorTypes are the same as in Java and are defined in resources\internal\custom\_field\_types\error\_messages\_en.properties.
+
+#### Localization of Labels
+
+For labels of fields, there is special treatment in the Form Engine, where you have various additional fallback mechanisms you can use.
+The Kernel key used for the labels is of the form `documentModel.label.<modelId>.<fieldFullPath>`.
+The parameters are analogous to the ones in [Field error messages](#_field_error_messages).
+In previous releases this was done with the method `IData.identifierToString`.
+
+#### Conversion of field values to UI-values
+
+For the conversion of internal values to UI-values, in the past the method `IData.getValueForDisplay` could be used.
+To alter this behavior you now can use the class `ValueConversion` from Localization npm package, see the *A12 Localization Documentation*.
+
+### Custom Error Messages
+
+This chapter only describes the Java implementation.
+For TypeScript, changing error messages can be done via [Localization](#_localization).
+
+In Kernel, error messages for formal errors and error messages of the custom field types provided by Kernel are built in to Kernel artifacts.
+However, these error messages can be adapted project-specifically (e.g. if they are either unsuitable for the project or do not exist in the necessary locale) using [ResourceBundle](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/util/ResourceBundle.html)s.
+
+#### Add custom error messages
+
+Check which resource is used for the specific error message.
+For example formal errors: resources\internal\<version>\vk\_rt\_formal\_errors\error\_messages\_en.properties
+
+To add custom messages create a file called `error_messages_<LOCALE>.properties` (in the directory `resources/vk_rt_formal_errors`)
+containing the error keys and your own error messages. For each supported locale a specific file has to be created (e.g. `error_messages_de_DE.properties`).
+
+The property files contain key-value pairs in the following format:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` ENUMERATION_DEFAULT_ERROR=The value is not allowed for the enumeration. ``` |
+```
+
+Some error messages are parameterized.
+When providing own error messages, the placeholder must not be changed.
+Example:
+
+```
+|  |  |
+| --- | --- |
+| ``` 1 ``` | ``` SOLITARY_INDEX_FEHLER=You specified '$<fieldName>.Value$' for '$<fieldName>$', but you did not specify additional values. ``` |
+```
+
+In this example, the placeholder <timeIntervalFormat> must also appear in the project-specific error message.
+
+#### Fallback mechanism
+
+`kernel-core-runtime` uses a fallback mechanism for the resource loading logic.
+When there is either
+
+* no custom error message file given or
+* a specific error key is missing in the custom error message file (for example added error keys with an update of the A12 Kernel)
+
+then the internal predefined error message is automatically used.
+This mechanism always provides an error message.
+
+The internal `ResourceBundle` is located at `internal/<version>/vk_rt_formal_errors/error_messages`.
+
+#### Predefined Error Messages
+
+A12 provides predefined error messages for all errors that can occur and are not specified in the document model.
+This category includes error messages for formal errors and error messages for custom field types provided by A12.
+The provided languages are currently the ones in [Supported Languages](#_supported_languages).
+
+## Breaking Change Management
+
+### Kernel specific definition of "Public API"
+
+In Kernel the sources are divided into the following three parts:
+
+* **Public API** - All sources that are neither "internal" nor "a12internal" (see below)
+* A12 Internal API
+
+  + All sources in folders named "a12internal" or sub-folders thereof, or for Java sources in packages named "a12internal" or sub-packages thereof
+  + All targets being annotated with *OnlyForA12InternalUsage*
+* Internal
+
+  + All sources in folders named "internal" or sub-folders thereof, or for Java sources in packages named "internal" or sub-packages thereof.
+  + Also all sources in modules whose "artifactId" contains "internal" (e.g. "com.mgmtp.a12.kernel:kernel-internal-test-master").
+    This is used for modules that only exist for testing the kernel (e.g. integration tests and test utilities).
+    This procedure was chosen in order to be able to implement tests easily and efficiently, e.g. to be able to access things that are package private.
+
+Changes to A12Internal API are possible at any time, as for Internal, i.e. also in minor and patch releases.
+In contrast to adjustments to Internal, other A12 components are informed about adjustments to A12Internal API and often these are also coordinated in advance.
+
+Here are the ways in which the Kernel breaking change interpretation is extended from our A12 overall breaking change interpretation:
+
+|  |  |
+| --- | --- |
+| Public API | |
+| Breaking | Non-breaking |
+|  | * Add public signature to an interface being annotated with **OnlyForUsage**. All targets being marked with this annotation must not be implemented by the user of Kernel. Kernel provides the implementation, therefore adding public signature to those interfaces is non-breaking. * Remove or change public behavior/semantics to an interface being annotated **Experimental**. For all targets marked with this annotation, changes can be made during the subsequent stabilization without being breaking. |
+| Internal/A12Internal | |
+| Breaking | Non-breaking |
+|  | * Everything apart from Public API points are considered internal (changes in ***a12internal*** will be coordinated with affected A12 products, changes in internal won’t) * Any changes in this section is always considered non-breaking * The version of the generator from which code was generated must correspond to the version of the runtime with which the generated code is to be run   Projects which use A12 Validation Kernel directly have to generate the validation code for any Major, Minor or Patch releases of the A12 Validation Kernel |
+| Dependencies | |
+| Breaking | Non-breaking |
+|  | * Removing a (Java or TS) 3rd party dependencies. Reason: A project should not rely on the transitive 3rd party dependencies from kernel, but define them explicitly by itself. |
+| Data Representation | |
+| Breaking | Non-breaking |
+| * Changing the serialization of A12 Documents require migration. | * Changing the serialization of A12 Document require no migration. |
+
+## Migration Instructions
+
+### 2025.06-ext4
+
+* Kernel version: 30.7.0
+* Minimum compatible Document Model version: 28.0.0
+* Latest Document Model version: 28.4.0
+
+  + A migration from 28.3.0 to 28.4.0 was added due to a rename in the condition language and error text parameters that only
+    affects DMs that have `conditionLanguage` set to `de_DE` and have a `baseYear` set. If there are issues during the migration see
+    A12-18143 for more information.
+
+#### Deprecation
+
+* [A12K-3464] - The following API should be replaced as shown:
+
+|  |  |  |  |
+| --- | --- | --- | --- |
+| Programming language | Deprecated | Replacement | Hint |
+| *Java* and *Typescript* | *ICustomFieldType* and its methods that accept a `Map<String, Object>` parameter for configuration. | Implement *ICustomFieldValidator* instead of *ICustomFieldType* and implement the overloaded methods that do not accept a `Map<String, Object>` parameter. | This is a pure renaming since the name `ICustomFieldType` is also used for a class in the Document Model API, which often leads to confusion. Additionally, the `Map<String, Object>` parameter is not needed any longer. |
+| The public runtime API (see `IDocumentRtService` and `IMappingService`) has been extended to allow project-specific implementations for validating custom field types and custom conditions to be passed to the APIs. Users can now populate a `DocumentProcessingConfig` accordingly and pass their instance to the APIs. In this context, several APIs have been marked as deprecated and replaced with new ones. | | | |
+| *Java* | *MappingConfig* | Use *DocumentProcessingConfig* instead. | Uniform naming of the configuration class. |
+| *Java* | The pairing of `CustomFieldTypeService` with `ICustomFieldTypeService`, `CustomConditionService` with `ICustomConditionService`, and `DocumentRtCustomExtensionService` | Instead, new runtime APIs should be used, with the corresponding settings defined in `DocumentProcessingConfig` (see *IDocumentRtService* below). | The previously used static registration is impractical in server operations. |
+| *Typescript* | `CustomFieldTypeService` and `DocumentRtCustomExtensionService` | Provide your implementations via `GeneratedCodeRtConfig.customFieldTypeFactory` and `GeneratedCodeRtConfig.customConditionFactory` instead. | Kernel’s APIs have been extended to allow project-specific implementations for validating custom field types and custom conditions to be passed directly. |
+| *ICustomFieldTypeFactory* | | | |
+| *Java* | Methods `createCustomFieldType` and `createCustomFieldTypeV2` that return `ICustomFieldType` | Implement `createCustomFieldValidator` instead. |  |
+| *Java* | Methods `getSupportedTypeNames` | No longer needed, can be deleted in your implementation. |  |
+| *IDocumentRtService* | | | |
+| *Java* | Methods that do not accept `DocumentProcessingConfig`. | Methods have been overloaded with versions that accept a `DocumentProcessingConfig` parameter. Use those instead. |  |
+
+##### Java
+
+* [A12K-2893] - The alternative experimental `pojo` mode for `TypedAccessorGenerator` is now marked as deprecated. Use `overlay` mode instead. If you still need pojo mode, please contact the A12-Kernel team. The recommended default `overlay` mode is not affected.
+
+### 2025.06-ext2
+
+#### Deprecation
+
+##### Java
+
+* [A12K-3504] - The method `ICustomConditionFactory#createCustomCondition(String)` which was deprecated in release 29.2.0 has
+  now a default
+  implementation, so you can remove the corresponding implementation.
+
+### 2025.06
+
+|  |  |
+| --- | --- |
+|  | Please have a look at [Migration to latest A12](https://geta12.com/docs/overall/migration_guide/index.html) chapter for an explanation of general steps on how to upgrade before starting with the component migration to 2025.06. |
+
+* Kernel version: 30.0.0
+* Minimum compatible Document Model version: 28.0.0
+* Latest Document Model version: 28.3.0
+
+  + [A12K-3234] - The document model json structure now supports the optional attribute *includeLevel* for a group with allowed values *SINGLE\_RG* and *MODEL\_ROOT* (The attribute is only allowed if the group specifies an include, i.e. if *modelAlias* is also set) . If the attribute is not set, it will be deserialized like *SINGLE\_RG*, which corresponds to the classical behavior of includes.
+
+#### Breaking Changes
+
+##### Java
+
+* [A12K-3166] - The annotation *@OnlyForUsage* was added to the interface *IRequirednessConfig*.
+* [A12K-3174] - The support for Java 17 has ended.
+  Please use Java 21.
+* [A12K-3259] - Some deprecated methods were removed with the following replacements:
+
+|  |  |
+| --- | --- |
+| Removed | New method |
+| *IDocumentStaticServiceConfig* | |
+| *getMappingProperties()* | Use *getModelPackage(String)* instead. |
+| *IComputedFieldInstance* | |
+| *apply(IDocumentFactory, Consumer<IComputedFieldInstance>)* | Use *applyTo(DocumentV2)* instead. |
+| *IDocumentComputationResult* | |
+| *apply(IDocumentFactory, Consumer<IComputedFieldInstance>)* | Use *applyTo(DocumentV2)* instead. |
+| *getComputedFieldInstances()* | Use *getComputedFieldInstancesWithoutErrors()* and *getComputedFieldInstancesWithErrors()* instead. |
+| *IMessage* | |
+| *getErrorFieldAsPointer()* | Use *getErrorFieldPointer()* instead. |
+| *getReferencedFieldsAsPointers()* | Use *getReferencedFieldsPointers()* instead. |
+| *getRefOmissionErrorResponsibleAsPointers()* | Use *getRefOmissionErrorResponsiblePointers()* instead. |
+
+* [A12K-3188] - Adaption of *IComputedFieldInstance*, *ICustomCondition*, *IDocumentComputationResult*, *IDocumentRtService*,
+  *IMessage* (Part of the rewrite scripts): see javadoc for details.
+* [A12K-3188] - Renaming of *CauseEntityInstance* to *PartiallyKnownDocumentMultiPointer*.
+* [A12K-3188] - Adaption of *DocumentPointer* (Part of the rewrite scripts): 'toFullName' renamed to 'fullName', 'toRepetitionIndices' renamed to 'repetitions'.
+* [A12K-3188] - Adaption of *CauseEntityInstance*/*PartiallyKnownDocumentMultiPointer* (Part of the rewrite scripts):
+
+|  |  |
+| --- | --- |
+| Change | New method |
+| *constructor* | The class is now an interface, use the method *of* instead of the constructor. |
+| *asDocumentPointer()* | Renamed to *toDocumentPointer* |
+| *convertibleToDocumentPointer* | Is no longer necessary, as *toDocumentPointer* checks if a *DocumentPointer* can be created. |
+| *toFullName* | Renamed to *fullName* |
+| *toRepetitions* | Renamed to *repetitions* |
+
+* [A12K-2756] - The method *DocumentRtService.coalesceBooleans()* was removed without replacement.
+
+##### TS
+
+* [A12K-2913] - The interfaces *DocumentModel.DateTimeType* and *DocumentModel.TimeType* have now the new property *format*.
+  Anonymous objects or own implementations have to be adapted.
+
+#### Deprecation
+
+##### Java
+
+Types and methods for *IDocument* are deprecated.
+The Document API V2 should be used instead.
+See the JavaDoc comments for details
+
+* [A12K-3388] - The interface *IDocumentV1V2Converter*, the class *BasicTypeV1V2Conversion*, the class *EmptyDocumentFactory* and methods in *DocumentServiceFactory*.
+* [A12K-3188] - All the services, interfaces, methods that use *IDocument* (Document V1) are now deprecated, see the migration scripts and deprecation information in JavaDoc for details for the replacements.
+* [A12K-3236] There is a change in the CLI-tool *BatchDocumentModelExpander*, if your to-expand document models only contain model references related to the document model expansion (include and import, which until now it is the standard use), there is nothing to adapt.
+  Otherwise, be aware that the tool now only removes model references with purpose 'include', 'transitiveInclude' or 'typeDefinitions'.
+
+##### TS
+
+* [A12K-3009] - The interfaces *ICustomFieldTypeService* and *ICustomConditionService* was removed.
+* [A12K-3009] - The following methods in implementations of *ICustomFieldTypeFactory* should be replaced as shown (can be made via codemod scripts):
+
+|  |  |
+| --- | --- |
+| Deprecated | New method |
+| *getSupportedTypeNames()* | Remove method. |
+| *createCustomFieldType(string)* | Change method. Return *null* if the factory does not support the custom field type (do not throw an exception - multiple factories can be registered). |
+| *createCustomFieldTypeV2(string)* | Remove method. Move the implementation to *createCustomFieldType(string)* |
+
+* [A12K-3009] - The following methods in implementations of *ICustomConditionFactory* should be replaced as shown (can be made via codemod scripts):
+
+|  |  |
+| --- | --- |
+| Deprecated | New method |
+| *getSupportedConditionNames()* | Remove method. |
+| *createCustomCondition(string)* | Change method. Return *null* if the factory does not support the custom condition (do not throw an exception - multiple factories can be registered). |
+| *createCustomConditionV2(string)* | Remove method. Move the implementation to *createCustomCondition(string)* |
+
+### Model Migration Tool
+
+The document models can be migrated as follows:
+
+* Download the artifact `kernel-tool-model-migration-<kernel_version>-jar-with-dependencies.jar`.
+* Execute `java -jar <artifact name from above> -h` to see how to use the artifact.
