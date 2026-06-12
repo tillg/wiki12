@@ -1,5 +1,12 @@
 # Build & deployment structure
 
+> **Revised (2026-06-12): Gradle is allowed — but ONLY to build the Java Data
+> Service.** The original "no Gradle at all" stance is narrowed: the template
+> ships a proven Gradle build for the server, and reusing it (contained in the
+> server's Dockerfile) beats re-deriving a Maven build for no real gain. Gradle
+> is still banned everywhere else — client, Node services, CLI, and
+> orchestration. See the "Gradle" section below.
+
 wiki12 starts from the **A12 Full-Stack Project Template** (release 2025.06) but
 replaces its build and orchestration layer. We keep what the template gives us
 that is hard to reproduce — the working Data Services server app, model/auth
@@ -18,10 +25,15 @@ we adopt it as the starting point and deviate deliberately:
   Quick Start. Rationale: we want full control of the UI (search, markdown editing
   with Milkdown, read views) rather than adapting the template's stock client.
 
-- **No Gradle — at all.** The template's build is gradle end-to-end (image build,
-  model prep/codegen, placeholder replacement, `composeUp`). We remove the gradle
-  layer entirely. Rationale: a single, transparent build path we own, expressed
-  per-component, without a gradle toolchain to learn/maintain.
+- **Gradle for the Java server only.** The template's build is gradle end-to-end
+  (image build, model prep/codegen, placeholder replacement, `composeUp`). We keep
+  gradle **only** to build the Java Data Service (reusing the template's working
+  server build), and remove it from everything else — there is **no top-level
+  gradle** orchestrating components, and `composeUp`/`buildImages` are replaced by
+  `just` + docker-compose. Rationale: the server's gradle build is proven and
+  hard to reproduce; re-deriving it in Maven is risk for no gain. The client, the
+  Node model-lifecycle service, the `wiki12` CLI, and orchestration stay
+  gradle-free.
 
 ## Build lives in each component, driven by docker-compose
 
@@ -33,17 +45,19 @@ them.
 
 Consequences we accept and must implement:
 
-- **Java Data Service** is built with **Maven** (not gradle), run from the
-  server's build script in its Dockerfile. A12 publishes Maven-coordinate
-  artifacts/BOMs (e.g. `com.mgmtp.a12.dataservices:*`), so a Maven Spring Boot
-  build is viable. (Maven is not gradle; it satisfies "no gradle".)
+- **Java Data Service** is built with **Gradle** (the template's server build),
+  invoked by the server's **Dockerfile** during `docker compose build`. It resolves
+  `com.mgmtp.a12.*` artifacts from `artifacts.geta12.com`. This is the **one**
+  place gradle runs.
 - **Kernel codegen** (`validation.js` / typed accessors, generated from document
-  models) is run by invoking the **kernel codegen CLI jar**
-  (`kernel-md-typed-accessor-gen`, `*-CLI` classifier) from a build script — a
-  JVM step, not gradle. This replaces the template's `prepare-models` gradle plugin.
-- **Our own TS tooling** (`src/dm-to-fm` form generator, `src/model_tools`
-  validator, and the future migration runner) runs on Node — invoked from build
-  scripts / the Node service, never gradle.
+  models) rides that gradle build at build time (the template's `prepare-models`
+  plugin) for any models bundled into the image. **Runtime** codegen — when a
+  model is deployed live — is done **in-process by the Data Service** (JVM kernel
+  libraries), per ADR-0003 / findings §4. No separate codegen CLI is needed.
+- **Client, CLI, and Node tooling are gradle-free.** The React client builds with
+  its own npm/Vite toolchain; the `wiki12` CLI and the Node model-lifecycle
+  service (`src/dm-to-fm`, `src/model_tools`, migration runner) run on Node —
+  invoked from their own build scripts / Dockerfiles, never gradle.
 
 ## Orchestration: `just` + docker-compose
 
@@ -76,6 +90,15 @@ template's gradle tasks (`composeUp`, `buildImages`, `replacePlaceholders`).
   and **MINOR** are bumped manually (breaking / feature changes); only **PATCH** is
   automatic.
 
+## Identity: Keycloak is the sole user store
+
+We keep the template's **Keycloak** as the **only** place users exist — wiki12
+holds no user table and builds no login/RBAC in the baseline (auth is out of
+scope, see proposal). The build **ensures an `admin`/`admin` user exists** so the
+stack is usable out of the box. The web client's **System area links out to the
+Keycloak console** for user maintenance rather than reimplementing it. Consuming
+Keycloak for actual route/role protection is deferred to the auth change.
+
 ## No Kubernetes, no Helm
 
 wiki12 targets **docker-compose only**. We do not use Kubernetes or Helm charts.
@@ -83,11 +106,16 @@ wiki12 targets **docker-compose only**. We do not use Kubernetes or Helm charts.
 
 ## Status / open items
 
-- Confirm **Maven** as the Java server build tool (vs. another non-gradle path).
-- Confirm a **validation-code generator CLI** exists alongside the typed-accessor
-  CLI (the codegen the form engine's `validation.js` needs).
-- Registry/credentials for `@com.mgmtp.a12.*` + Data Service artifacts remain a
-  prerequisite (tracked in findings-a12.md §6).
+- ~~Confirm Maven as the Java server build tool~~ — **moot:** the Java server
+  uses the template's **Gradle** build (revised 2026-06-12).
+- ~~Confirm a validation-code generator CLI~~ — **moot:** build-time codegen rides
+  the gradle `prepare-models` plugin; runtime codegen is in-process in the Data
+  Service (ADR-0003). No standalone CLI required.
+- **Registry — RESOLVED:** consume from **<https://artifacts.geta12.com>** (public
+  JFrog, no login) for `com.mgmtp.a12.*` Maven, `@com.mgmtp.a12.*` npm, and Docker
+  images. Not internal Artifactory, not Maven Central. Build from GitHub source
+  only as a fallback. License: dual **EUPL-1.2** / commercial. Red Hat catalog
+  images are outdated — don't use them. (findings §6.)
 - **PATCH-bump cadence:** "every compile bumps PATCH" means a `just dev` build
   rewrites `VERSION` each run (and shows as a git change). Decide whether the
   dev-watch loop bumps on every rebuild or only explicit `just build`/release

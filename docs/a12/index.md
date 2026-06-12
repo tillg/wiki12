@@ -24,6 +24,34 @@ Questions the docs don't answer often have answers here — check before assumin
 - **A12 training / e-learning** — <https://training.geta12.com/> (GetA12 login).
 - **A12 Support Portal** — mgm Jira service desk for partners (tickets).
 
+## A12 artifacts & source (how wiki12 obtains the platform)
+
+wiki12 consumes A12 **without** internal mgm Artifactory and **without** Maven
+Central (the `com.mgmtp.a12*` groups did not resolve from Central's index as of
+2026-06).
+
+- **Public artifact registry — <https://artifacts.geta12.com>.** A **public JFrog
+  Artifactory**, **no login required**. This is the canonical source of the
+  `com.mgmtp.a12.*` Maven artifacts, the `@com.mgmtp.a12.*` npm packages, and A12
+  Docker images. Point Maven/npm/Docker here. **This is the default path** —
+  prefer consuming published artifacts over building from source.
+- **Source on GitHub — <https://github.com/orgs/mgm-tp/repositories?q=a12>.** The
+  core is open source (~27 repos): `a12-kernel`, `a12-base`, `a12-dataservices`,
+  `a12-utils`, `a12-form-engine`, `a12-widgets`, `a12-client`, `a12-devtools`,
+  `a12-migration-tool`, the full-stack project template, … Build the dependency
+  graph from source (`kernel → base → dataservices`; `utils → form-engine →
+  widgets → client`) **only as a fallback** when a needed artifact/version isn't
+  on `artifacts.geta12.com`. The **SME modeler is *not* open source** (closed,
+  mgm-internal) — wiki12 doesn't need it (hand-authored models + `src/dm-to-fm`).
+- **License — dual: EUPL-1.2 _or_ commercial.** The open-source option is the
+  **European Union Public Licence v1.2** (copyleft, OSI-approved), with a
+  commercial alternative from mgm (`a12-license@mgm-tp.com`). EUPL-1.2 **permits
+  redistribution of binaries** (incl. via our own GitHub Packages / `ghcr.io`)
+  provided the LICENSE/`NOTICE`/`THIRD_PARTY_NOTICES` are preserved, corresponding
+  source is made available, and distributed derivative works stay EUPL-compatible.
+- **Do NOT use the Red Hat Ecosystem Catalog A12 images** — they are **outdated**.
+  Use `artifacts.geta12.com` images, or images we build ourselves.
+
 ## Sections
 
 ### Overall (concepts, tutorials, modeling/dev guides) — `overall/`

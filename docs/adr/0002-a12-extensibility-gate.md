@@ -1,5 +1,13 @@
 # A12 server-side extensibility is one gate, with a façade fallback
 
+> **Status: RESOLVED = GO (Step 0, 2026-06-12).** The stock A12 Data Service
+> supports custom server-side Java logic — `@RemoteOperation` endpoints,
+> `Document{Before,After}{Create,Update}` lifecycle hooks, and injected
+> `QueryService` / `IDocumentRepository`. All three behaviors live **inside** the
+> Data Service; the **façade fallback is dropped**. See `findings-a12.md §0`.
+> (One residual verification, not a gate-reopener: confirm raw `JdbcTemplate`/
+> `DataSource` injection for the slug advisory lock — `findings-a12.md §1a`.)
+
 Several baseline behaviors must run at the server boundary so the web client and
 the `wiki12` CLI cannot diverge: **slug derivation** (key fields → slug, sticky
 suffix, old→new diff — see ADR-0001), **slug resolution** (try-ID-then-slug),

@@ -9,6 +9,33 @@ Confidence tags: **[HIGH]** explicit in docs · **[MED]** inferred from docs ·
 
 ---
 
+## Review-gate decisions (2026-06-12)
+
+Resolved with the user while walking this document at the Step 0 review gate:
+
+1. **ADR-0002 gate → GO, accepted.** Logic lives in the stock Data Service;
+   façade fallback dropped. ADR-0002 marked RESOLVED.
+2. **Migration execution → server-side Node component** (§4, "B"), *not* the
+   CLI runner. Keeps migrations-as-content-items + transpile + `isolated-vm`
+   sandbox. Supersedes ADR-0003 (rewritten).
+3. **Runtime codegen owner → Java Data Service.** It runs the JVM kernel codegen
+   (`validation.js`/typed accessors) on model registration and serves the
+   artifacts; the client fetches them at runtime (`fetch('models/validation.js')`
+   confirmed in the form-engine bootstrap), so new models need no client rebuild.
+   Node component stays pure-Node.
+4. **Slug uniqueness → advisory lock ONLY** (no DB unique-index backstop). ⇒ the
+   raw-SQL injection question (§1a) is now a **hard gate** before Step 2 work;
+   and a listener-bypassing direct write can still create a duplicate (accepted).
+5. **§8 markdown reference ops → DEFERRED entirely.** No `md-refs` lib, no
+   `references`/backlinks field, no `rewriteRefs`. ADR-0001's 404 rename policy
+   stands unchanged. §8 remains a forward-looking note only.
+
+Action items (verification, not design): Q6 registry/credentials (Step-1
+blocker), Q7 Maven + validation-code CLI, §1a raw-SQL injection (now a gate),
+§5 Milkdown focus/scroll caveat (Step-4 risk).
+
+---
+
 ## 0. Headline: server-side extensibility gate (ADR-0002) → **GO**
 
 **The stock A12 Data Service supports custom server-side Java logic.** All three
@@ -119,13 +146,39 @@ against a writer that bypasses the listener. Downsides are exactly what we want
 to avoid: project-specific DDL coupled to A12's internal storage (upgrade-fragile).
 Treat as defense-in-depth only if needed.
 
-### Open verification (the one unknown)
-The advisory lock needs the listener/op to run one native SQL statement → inject
-a `JdbcTemplate`/`EntityManager`/`DataSource`. A12 is a standard Spring Boot + JPA
-app, so this is almost certainly available, but the docs only *show*
-`QueryService`/`IDocumentRepository` injection — raw-datasource access in custom
-code is **[MED] inference, not documented**. Confirm before Step 2 (candidate
-forum question; not yet posted).
+### Open verification — broadened to two probes (hard gate before Step 2)
+Because we chose advisory-lock-**only** (no DB-index backstop, review gate), this
+is a hard gate: if the lock can't be acquired, the slug invariant has no fallback.
+But the lock is not the only race-closer A12 might give us, so the spike probes
+**two** A12 concurrency primitives at once (see
+[`spike-slug-concurrency.md`](./spike-slug-concurrency.md)):
+
+| Probe | Question | If it passes → mechanism |
+|---|---|---|
+| **A** | Can custom code inject a raw `JdbcTemplate`/`DataSource` and run native SQL (`pg_advisory_xact_lock`) inside the request transaction? | **Advisory lock** (the recommended primary; ~2 lines in the listener). |
+| **B** | Does a document `update` **reject a stale/concurrent write** (optimistic locking), rather than last-write-wins? | **Per-`(model,name)` counter** *or* retry-on-conflict — **no raw SQL needed**. |
+
+Both are **[MED] inferences, not documented**. A12 is a standard Spring Boot + JPA
+app so both are likely, but neither is shown in the read set
+(`QueryService`/`IDocumentRepository` only).
+
+### No-raw-SQL fallback: a per-`(model,name)` counter (only if A) fails, B passes)
+A `SystemCounter` strategy can close the race **without** native SQL, leaning on
+A12's own document concurrency (Probe B). Two non-obvious constraints make or break
+it — both learned at the review gate:
+
+1. **It must be the *primary* generator** — every create *always* asks the counter
+   for the next number (no separate "is it taken?" check, which is itself racy).
+   Render `1` as the bare slug, `≥2` as the `_N` suffix.
+2. **Key it per `(model, name)`, one counter document each — not one shared
+   `SystemCounter` doc.** A single shared document is a system-wide hot row: every
+   create everywhere contends on it and retries, serializing all writes. Cost of the
+   correct shape: ~one extra counter document per item (most names are unique).
+
+Its safety still depends on A12 optimistic locking (Probe B) — i.e. it **moves**
+the unknown rather than removing it, which is why the spike tests both. The
+DB partial unique index (below) remains the last resort only if **both** probes
+fail.
 
 ---
 
@@ -379,24 +432,35 @@ service (stores TS, compiles + sandbox-runs server-side). **[HIGH — decided]**
 We **start from the Project Template but deviate**:
 - **Own client.** Drop the template's `client/`; build our own A12-Widgets React
   app from scratch (per the Widgets Quick Start).
-- **No Gradle — at all.** Replace the template's gradle build layer. Each
-  component owns its build script under its `src/`, invoked from its Dockerfile
-  during **`docker compose build`**. Consequences to resolve (below).
+- **Gradle for the Java server only** (revised 2026-06-12; was "no gradle at
+  all"). Keep the template's **gradle build for the Data Service** (invoked from
+  the server Dockerfile during `docker compose build`); everything else — client,
+  Node services, CLI, orchestration — stays gradle-free. **No top-level gradle**;
+  `composeUp`/`buildImages` are replaced by `just`.
 - **Orchestrated by `just` + docker-compose.** `just dev` (start stack with file
   watching), `just dev-stop`, `just dev-clean` (clean images); more later.
 - **No Kubernetes / no Helm** (the A12 Helm "Stack" is Enterprise anyway).
 
-Two gradle dependencies the template relies on that our build scripts must
-replace (flagged, not yet resolved):
-1. **Java Data Service build.** The template builds the Spring Boot server with
-   gradle. "No gradle" ⇒ build it another way — **Maven** is the natural fit (A12
-   ships Maven-coordinate artifacts/BOMs, e.g. `com.mgmtp.a12.dataservices:*`), run
-   from the server's build script in its Dockerfile. **[decision: confirm Maven]**
-2. **Kernel codegen (`validation.js` / typed accessors).** Generated from models;
-   the template uses the `prepare-models` gradle plugin, but the generator also
-   ships as a **CLI** (`kernel-md-typed-accessor-gen`, `*-CLI` classifier —
-   `docs/a12/kernel/kernel-documentation-dev.md`). So a build script can invoke the
-   kernel **CLI jar** (needs a JVM, not gradle). **[confirm a validation-code CLI exists too]**
+The two gradle dependencies the template relies on are now **resolved** by
+keeping gradle for the server:
+1. **Java Data Service build → use the template's gradle build** (resolving
+   `com.mgmtp.a12.*` from `artifacts.geta12.com`), contained in the server
+   Dockerfile. The earlier Maven plan is dropped.
+2. **Kernel codegen (`validation.js`) → in-process Java library in the Data
+   Service.** The generator is a callable JVM API —
+   `DocumentModelServiceFactory().createDocumentModelService()
+   .generateValidationCode(docModel, cfg, …)` returning source as a zip byte-array
+   (`docs/a12/kernel/kernel-documentation-dev.md:1152`). It is **JVM-only — no TS
+   API exists** (`…:1168`), so generation must live in the Data Service anyway. On
+   model publish/change the service generates the validation code and serves it
+   for the client to fetch. **Bonus:** generating in-process auto-matches the
+   generated code to the running kernel version (the docs' big correctness caveat,
+   `…:114`, `…:1702`); and the same API gives server-side authoritative validation
+   via the dynamic `IModelCodeCache` path (`…:1182`). Build-time `prepare-models`
+   (gradle) is then optional, only to pre-generate bundled models for faster
+   startup. **One confirm:** that `IValidationCodeGeneratorConfig.ProgrammingLanguage`
+   has a JS/TS value (the example shows `JAVA`); if it emits TS, add a small
+   transpile, if JS, serve as-is. **[HIGH — API confirmed; JS-target [MED]]**
 
 - **Licensing:** dual — **Community (free, no-auth artifacts)** vs Enterprise
   (credential-gated). The base template + Data Services + Keycloak are
@@ -409,16 +473,25 @@ replace (flagged, not yet resolved):
   schema auto-provisioned via **Liquibase** on startup
   (`docs/a12/data_services/dataservices-documentation-src.md § "External Postgres Database"/"Database Migration"`). **[HIGH]**
 
-### Open issue — registry/credentials & "pure docker pull" path
-- The exact npm/Gradle/Docker **registry URLs + auth** for `@com.mgmtp.a12.*` are
-  **not in the public docs**; they come via the Project Template's config / mgm
-  onboarding. Our email is `@mgm-tp.net` (mgm-internal) → likely the **internal
-  mgm Artifactory**, not `artifacts.geta12.com`. **Confirm before scaffolding.** **[risk]**
-- There is **no documented "just `docker pull` a prebuilt Data Service image"**
-  path for Community use — the image is produced by `gradle buildImages` from the
-  template (needs the JDK/Node/Gradle toolchain). This affects how "single
-  `docker compose up`" (proposal goal) is achieved: we likely build images once,
-  then `compose up`. **[risk to surface]**
+### Registry/credentials — RESOLVED (2026-06-12)
+- **Public registry: <https://artifacts.geta12.com>** — a **public JFrog
+  Artifactory, no login** — hosts the `com.mgmtp.a12.*` Maven artifacts,
+  `@com.mgmtp.a12.*` npm packages, and Docker images. Point Maven/npm/Docker here.
+  **Not** internal mgm Artifactory, **not** Maven Central (`com.mgmtp.a12*` did not
+  resolve from Central's index). The earlier "likely internal Artifactory"
+  inference was wrong.
+- **Source is on GitHub** (core open source, ~27 repos) — build the graph
+  (`kernel → base → dataservices`; `utils → form-engine → widgets → client`) only
+  as a **fallback** if something's missing on `artifacts.geta12.com`. **Don't build
+  the platform from source by default.**
+- **License: dual EUPL-1.2 _or_ commercial.** EUPL-1.2 permits binary
+  redistribution (e.g. caching our built artifacts/images on our own GitHub
+  Packages / `ghcr.io`) with notices preserved + source available.
+- **Do NOT use the Red Hat catalog A12 images — outdated.** Use
+  `artifacts.geta12.com` images or build our own (ADR-0005).
+- Remaining (minor): a ~10-min resolve test that the specific artifacts/versions
+  we need are present on `artifacts.geta12.com` (`mvn dependency:get …`, `npm view
+  @com.mgmtp.a12.widgets/widgets-core`).
 
 ---
 
@@ -436,6 +509,12 @@ replace (flagged, not yet resolved):
 ---
 
 ## 8. Markdown reference operations (wiki12 capability)
+
+> **DEFERRED at the review gate (2026-06-12) — not in `basic_setup`.** This whole
+> section is forward-looking only: it reaches into the proposal's deferred
+> relationships/graph work (backlinks) and reopens ADR-0001's rename policy
+> (link rewrite vs 404). Build none of it now; revisit with the relationships
+> change.
 
 Operations over markdown body fields, as a **shared TS library** (e.g.
 `src/md-refs/`) reused **server + client + CLI** — same pattern as `dm-to-fm`,
@@ -484,11 +563,13 @@ content-ref extraction + rename-rewrite need this decided. **[decision]**
    sandbox-runs per doc; gate at upload. ADR-0003 to be rewritten accordingly.
 6. **Registry/credentials** — internal mgm Artifactory vs geta12.com; confirm
    access for `@com.mgmtp.a12.*` and Data Service artifacts. **[blocker before Step 1]**
-7. **Build/deploy shape** — DECIDED (**ADR-0005**): start from Project Template
-   but **no Gradle**; own client; per-component build scripts invoked by
-   Dockerfiles via `docker compose build`; `just` (dev/dev-stop/dev-clean) over
-   docker-compose; no k8s/Helm. **Open:** confirm Maven for the Java server build
-   + a validation-code CLI (no-gradle codegen).
+7. **Build/deploy shape** — DECIDED (**ADR-0005**): start from Project Template;
+   **gradle for the Java server only** (rev. 2026-06-12; client/Node/CLI/
+   orchestration gradle-free); own client; per-component build invoked by
+   Dockerfiles via `docker compose build`; `just` over docker-compose; no
+   k8s/Helm. Registry = `artifacts.geta12.com` (public). Maven/validation-CLI
+   opens are moot (server uses gradle; codegen rides `prepare-models` + in-process
+   runtime codegen).
 8. **Rich text vs markdown** — DECIDED (§5): editor = **Milkdown** (markdown-native,
    ProseMirror/Remark), store plain markdown in the String body field; wrap as a
    custom form-engine widget. Not the A12 Lexical RTE. Caveat: contenteditable

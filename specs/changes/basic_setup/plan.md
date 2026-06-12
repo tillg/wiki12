@@ -64,22 +64,25 @@ in `specs/changes/basic_setup/findings-a12.md`.
       creds for published packages, and reachability of the geta12.com docs (see
       Sources note above).
 - [x] **Open questions log**: capture anything unresolved as explicit risks.
-- [ ] **REVIEW GATE**: present `findings-a12.md` to the user and walk through it
-      together. The headline output is the **extensibility go/no-go** — it selects
-      the architecture (Data Service vs. façade per ADR-0002). Do not start Step 1
-      until the user has reviewed and approved the findings (and any plan
-      adjustments they imply).
+- [x] **REVIEW GATE** (2026-06-12): walked `findings-a12.md` with the user.
+      Decisions (see findings "Review-gate decisions"): ADR-0002 = **GO**;
+      migration execution = **server-side Node component** (B); runtime codegen =
+      **Java Data Service**; slug uniqueness = **advisory lock only** (raw-SQL
+      injection now a hard gate before Step 2); **§8 deferred**. ADR-0002/0003 +
+      architecture/proposal/domain updated.
 
 ## 1. Project scaffolding & infrastructure
 
-- [ ] Initialize the monorepo layout: `server/`, `client/`, `cli/`,
-      `models/`, `migrations/`, `docker/`.
-- [ ] Add `docker-compose.yml` with `postgres`, `data-service`, and `client`
-      services on a shared network.
+- [ ] Initialize the monorepo layout: `server/`, `client/`, `model-lifecycle/`
+      (Node service: form-gen + migration runner), `cli/`, `models/`, `docker/`.
+- [ ] Add `docker-compose.yml` with `postgres`, `data-service`,
+      `model-lifecycle`, `keycloak`, and `client` services on a shared network.
 - [ ] Configure PostgreSQL service (volume, credentials via env, healthcheck).
 - [ ] Provision the A12 Data Service (Java) container; wire DB connection;
       depend on healthy `postgres`.
-- [ ] `docker compose up` brings up all three services and they report healthy.
+- [ ] Provision **Keycloak** (sole user store); the build ensures an
+      `admin`/`admin` user exists. No wiki12 login/RBAC in baseline.
+- [ ] `docker compose up` brings up all services and they report healthy.
 
 ## 2. Data models
 
@@ -89,7 +92,12 @@ in `specs/changes/basic_setup/findings-a12.md`.
       `type`, `slug`, `id`, markdown description + type-specific fields), v1.
 - [ ] Register models with the Data Service; confirm generic CRUD endpoints
       respond for each model.
-- [ ] Enforce slug rules server-side (or in the façade, per the Step 0 gate):
+- [ ] **GATE — run the slug-concurrency spike**
+      (`spike-slug-concurrency.md`) before writing any slug code: probe A (raw
+      `DataSource`/`JdbcTemplate` injection → advisory lock) and probe B (document
+      optimistic locking → counter / retry fallback). Pick the mechanism from the
+      decision matrix; if both fail, reopen the DB unique-index fallback.
+- [ ] Enforce slug rules server-side (mechanism per the spike outcome):
       slugs are read-only, **namespaced `<type>:<name>`** (page: from title →
       `page:<name>`; entity: from the type's key fields), lowercase `[a-z0-9_]`
       with `_` separator and `:` delimiter; `page` is the default namespace.
@@ -103,17 +111,18 @@ in `specs/changes/basic_setup/findings-a12.md`.
 
 ## 3. Form models
 
-- [ ] Confirm server-side default form model generation works for each data
-      model (forms render with no explicit form model), with the form model
-      stored/managed server-side and the client form engine rendering from (data
-      model + form model + document).
+- [ ] Implement default form-model generation in the **model-lifecycle service**
+      (`src/dm-to-fm`) and confirm it works for each data model (forms render with
+      no explicit form model), with the form model stored/served server-side and
+      the client form engine rendering from (data model + form model + document,
+      incl. the Java-generated `validation.js`).
 - [ ] Add an explicit form model for `page` (markdown body editor layout) as the
       reference example.
 
 ## 4. Web client (React + A12 widgets)
 
-- [ ] Scaffold the React/TS app from the A12 widgets quick start; point it at the
-      Data Service.
+- [ ] Scaffold the React/TS app from the A12 widgets quick start in a **compact
+      flat A12 theme** (colors a later refinement); point it at the Data Service.
 - [ ] Implement **search** against the unified search endpoint (all content over
       title/slug/body), rendering the typed results (kind/type, slug, snippet).
 - [ ] Implement **read/view** with markdown rendering.
@@ -122,6 +131,10 @@ in `specs/changes/basic_setup/findings-a12.md`.
 - [ ] When an edit changes the slug, show a **clear notification** (e.g. toast/
       banner stating the slug changed old → new).
 - [ ] Implement **delete** with confirmation.
+- [ ] Add a **System area**: (a) a link out to the **Keycloak console** for user
+      maintenance; (b) a **Migrations** list of `Migration` content items, each
+      editable as its **TS source in a simple text editor** (uploads TS source;
+      the model-lifecycle service transpiles + sandbox-runs — ADR-0003).
 - [ ] Build the client into the `client` container (served static, e.g. nginx).
 - [ ] Verify in a browser: search → open → edit → save → delete round-trips for
       both a Page and an Entity.
@@ -147,12 +160,16 @@ in `specs/changes/basic_setup/findings-a12.md`.
 
 ## 6. Migrations
 
-- [ ] Define the migration convention: `migrations/<type>/<from>-<to>.ts`
-      exporting a single-document transform `(doc at vN) → (doc at vN+1)`.
-- [ ] Implement the migration runner in the CLI: `wiki12 migrate <type>
-      --from <v> --to <v> [--dry-run]` (runner owns iteration, IO, reporting).
-- [ ] **Gate the version bump**: `wiki12 model update <type> --version N` refuses
-      unless `migrations/<type>/<N-1>-<N>.ts` exists (`page` included).
+- [ ] Define the `Migration` content-item model (`targetModel`, `fromVersion`,
+      `toVersion`, `script` = TS source) holding a single-document transform
+      `(doc at vN) → (doc at vN+1)`.
+- [ ] Implement the migration runner in the **model-lifecycle Node service**:
+      transpile (TS→JS) + per-document sandbox execution; `wiki12 migrate <type>
+      --from <v> --to <v> [--dry-run]` calls it (service owns iteration, IO,
+      reporting).
+- [ ] **Gate the version bump at upload**: a `wiki12 model update <type>
+      --version N` is rejected unless its matching `Migration` item is uploaded
+      with it (`page` included).
 - [ ] Provide a worked example: bump one data model to v2 and ship its `1-2.ts`
       migration.
 - [ ] Verify: `--dry-run` reports affected instances **and the old→new slug

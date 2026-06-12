@@ -80,7 +80,8 @@ Wiki12 is built on A12, where content structure is described by **models**:
   Data models are **versioned**.
 - **Form Model** — defines how a data model is presented and edited in a form
   (layout, widgets, validation). If a content type has **no explicit form
-  model, a default form model is generated** from its data model. Conceptually,
+  model, a default form model is generated** from its data model (by wiki12's
+  own server-side tooling — the platform has no generator). Conceptually,
   **every entity therefore has a form model** — explicit or generated.
 
 ```mermaid

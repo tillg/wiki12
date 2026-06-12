@@ -43,14 +43,26 @@ belt-and-suspenders, derivation also forbids a slug from matching the full
 `<prefix>_<ULID>` pattern. Cost: read-by-slug pays a harmless extra ID lookup
 first. Resolution happens server-side (the Data Service already owns slug logic).
 
-## Risk (hard gate)
+## Risk (hard gate) — narrowed to race-safety
 
-Server-side enforcement assumes A12's stock Data Service exposes a server-side
-extension point (computed field / write hook / interceptor) capable of running
-this logic. **This is unverified.** Step 0 of the plan must confirm it before
-implementation. If no such hook exists, this decision is revisited — the
-fallback is a thin façade service in front of the Data Service that owns slug
-logic (keeping the single-boundary guarantee); pushing derivation into the
-clients is explicitly rejected, because direct API writes (seeds, migrations,
-future clients) would bypass it and corrupt uniqueness. This is a specific
-instance of the broader extensibility gate in ADR-0002.
+The broad extensibility gate (ADR-0002) is **RESOLVED = GO**: the stock Data
+Service hosts the slug logic (before-write listener), so derivation, the old→new
+diff, and single-boundary enforcement are settled, and the façade fallback is
+dropped. Pushing derivation into clients remains rejected (direct API writes —
+seeds, migrations, future clients — would bypass it).
+
+What is **still unverified** is *race-safe global uniqueness* under concurrent
+creates of the same name. The review gate chose the **transaction-scoped Postgres
+advisory lock** as the mechanism, with **no DB-index backstop** — so this is a hard
+gate before Step 2. The required A12 primitive is unconfirmed, so a spike probes
+**two** at once (`specs/changes/basic_setup/spike-slug-concurrency.md`):
+
+- **A — raw `DataSource`/`JdbcTemplate` injection** → enables the advisory lock
+  (primary mechanism).
+- **B — optimistic locking on document `update`** (stale writes rejected) →
+  enables a no-raw-SQL fallback: a per-`(model,name)` counter used as the
+  *primary* number generator, or retry-on-conflict.
+
+Decision matrix: **A pass → advisory lock**; **A fail, B pass → counter / retry**;
+**both fail → reopen the rejected DB partial unique index** (the only remaining
+hard guarantee). Confirm before writing slug code in Step 2.
