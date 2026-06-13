@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { loadModels, type LoadedModels } from "../api/models";
+import { loadDocumentModel } from "../api/models";
 import {
   createDocument,
   deleteDocument,
@@ -10,7 +10,8 @@ import {
   type ContentItem,
   type SlugChange,
 } from "../api/content";
-import { FormEngineHost, type FormEngineHandle } from "../components/FormEngineHost";
+import { parseDocModel, type DocModelInfo } from "../lib/docModel.ts";
+import { SimpleForm, type SimpleFormHandle } from "../components/SimpleForm";
 import { Banner, ConfirmDialog } from "../components/Ui";
 
 // /edit/:ref  -> edit existing (ref = id-or-slug)
@@ -23,12 +24,12 @@ export function EditPage(): ReactElement {
   const isCreate = ref === undefined;
   const [type, setType] = useState<string>(searchParams.get("type") ?? "Page");
   const [existing, setExisting] = useState<ContentItem | null>(null);
-  const [models, setModels] = useState<LoadedModels | null>(null);
+  const [docModel, setDocModel] = useState<DocModelInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [slugChange, setSlugChange] = useState<SlugChange | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
-  const handleRef = useRef<FormEngineHandle | null>(null);
+  const handleRef = useRef<SimpleFormHandle | null>(null);
 
   // Load the existing item (edit) then its models; or just models (create).
   useEffect(() => {
@@ -46,8 +47,8 @@ export function EditPage(): ReactElement {
             setType(item.type);
           }
         }
-        const m = await loadModels(resolvedType);
-        if (active) setModels(m);
+        const dmString = await loadDocumentModel(resolvedType);
+        if (active) setDocModel(parseDocModel(dmString));
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : String(e));
       }
@@ -115,12 +116,11 @@ export function EditPage(): ReactElement {
         </code>
       </div>
 
-      {!models && !error && <p>Loading form…</p>}
-      {models && (
-        <FormEngineHost
-          models={models}
+      {!docModel && !error && <p>Loading form…</p>}
+      {docModel && (
+        <SimpleForm
+          model={docModel}
           initialDocument={existing?.document}
-          initialDocId={existing?.slug}
           onReady={(h) => {
             handleRef.current = h;
           }}
@@ -128,7 +128,7 @@ export function EditPage(): ReactElement {
       )}
 
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-        <button onClick={save} disabled={saving || !models}>
+        <button onClick={save} disabled={saving || !docModel}>
           {saving ? "Saving…" : "Save"}
         </button>
         {!isCreate && existing && (

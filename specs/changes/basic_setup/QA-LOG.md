@@ -259,3 +259,20 @@ example) to become typed field instances. This is the same root area as **B15**
 therefore not yet functional end-to-end**; content mutations work via the API/CLI.
 This A12 form-engine value-binding (load + read-back) is the key remaining client
 integration task.
+
+### B20 — A12 form-engine value binding (investigated deeply; see FORM-ENGINE-DECISIONS.md)
+Docs-grounded fixes: document is array-of-instances `{Group:[{…}]}`
+(kernel-documentation-dev:1131); load = addTransientFields→parseDates, read-back =
+formatDates→removeTransientFields (:165); react-redux 7→9 (React 19); widgets commit
+on blur/Enter (BufferedTextLine) so VALUE_CHANGE *does* dispatch. BUT the engine's
+widget value read/write still didn't two-way bind with our hand-generated form
+models. **Decision:** ship a model-driven `SimpleForm` for create/edit (reliable),
+keep `FormEngineHost` as the scaffold. **Full CRUD now works in the browser.**
+
+### B21 — MODIFY_DOCUMENT param shape
+Accepts ONLY `{docRef, document}`; `documentModelName`/`locale` → invalid params.
+Fixed `updateDocument`.
+
+### ✅ Browser CRUD complete
+login → create (markdown) → view → **edit (loads + saves)** → delete → search.
+All verified live via Playwright.

@@ -4,3 +4,4 @@ tmp/
 *.local
 .vite/
 npm-debug.log*
+*.tsbuildinfo

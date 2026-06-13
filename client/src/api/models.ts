@@ -58,6 +58,11 @@ async function fetchText(url: string): Promise<string> {
   return res.text();
 }
 
+/** Fetch just the Document Model JSON (string) for a type — used by the simple form. */
+export async function loadDocumentModel(type: string): Promise<string> {
+  return fetchText(documentModelUrl(type));
+}
+
 /** Fetch the three model inputs for a content type, in parallel. */
 export async function loadModels(type: string): Promise<LoadedModels> {
   const [documentModelAsString, formModelText, validationCode] = await Promise.all([

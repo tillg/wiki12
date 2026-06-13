@@ -127,10 +127,10 @@ export async function updateDocument(
 ): Promise<WriteResult> {
   const model = modelNameOf(type);
   const dref = docRef(model, id);
+  // MODIFY_DOCUMENT accepts ONLY { docRef, document } — adding documentModelName/
+  // locale is rejected as invalid params (QA-LOG B21).
   await rpc<unknown>("MODIFY_DOCUMENT", {
-    documentModelName: model,
     docRef: dref,
-    locale: "en",
     document: toServerDocument(document),
   });
   const result: WriteResult = { item: { type: model, id, slug: dref, document } };
