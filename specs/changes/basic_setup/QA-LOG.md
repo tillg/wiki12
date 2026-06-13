@@ -214,3 +214,11 @@ Milkdown binding (B13). 15 bugs (B0–B14) found & fixed.
    ```
 3. Open http://localhost:8081 → Search (e.g. "einstein") → click a result to read.
    (The token lasts 24h; re-mint with the snippet above if it expires.)
+
+### B16 — healthchecks reported "unhealthy" though services worked (FIXED)
+The data-service/keycloak healthchecks used a `/dev/tcp` probe under `CMD-SHELL`
+(=`sh`), but `/dev/tcp` is a bash feature → the probe always errored → services
+showed `unhealthy` (which blocks `depends_on: service_healthy`, forcing `--no-deps`).
+Fixed: invoke `bash -c` explicitly; keycloak readiness is on the mgmt port `:9000`;
+added `start_period` for the JVM warm-up. **All 5 services now report healthy**, so
+`just up` works without `--no-deps`.
