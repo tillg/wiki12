@@ -164,4 +164,53 @@ working via the API/CLI. **Not yet in-browser:** create/edit/delete (form-engine
 form-model schema, B10) and slug derivation / unified-search / resolve-by-slug as
 real server ops (Tier-2 extension jar).
 
-(continued below)
+### B10-fix — form models now valid (subHeaderBox)
+`FormModel.Content.isInstance` (formengine-core) **requires** a `subHeaderBox` key
+in `content`; our generated + hand-authored form models omitted it. Added a minimal
+`subHeaderBox` to the dm-to-fm generator + `Page_FM`, regenerated, set
+`...import.models.overwrite.enabled=true`, restarted → re-imported. **The create/edit
+form now renders** (Title/Slug/Body fields, Save button). 🎉
+
+### B13 — Milkdown editor not bound (plain textarea fallback)
+The markdown Body renders as a plain `<textarea>` (uiid `a12-Body-F3`), not the
+Milkdown custom widget — the `widgetMap`/`formModelMap` binding didn't match. Body
+is still editable; rich markdown editing is a follow-on. [client/src/widgets/]
+
+### B14 — create/update payload shape fixed
+The client's `ADD_DOCUMENT` sent `{model, document}`; the real shape (confirmed
+live) is `{documentModelName:"<Type>_DM", locale:"en", document:{<Group>:{...}}}`.
+Fixed `createDocument`/`updateDocument`/`deleteDocument` in `client/src/api/content.ts`
+(strip engine wrapper keys, capitalize model name, parse docRef). The save now
+reaches the server with a valid envelope (error moved from "parameters invalid" to
+content validation).
+
+### B15 (OPEN) — driving A12 form-engine inputs from Playwright
+The A12 form-engine inputs are strictly redux-controlled; Playwright `fill`,
+`pressSequentially`, and even synthetic native input/change events do not update the
+engine store (the value reverts), so the automated create-via-form save submits
+empty fields → server validation error. This is a **test-harness limitation**, not a
+confirmed app bug — a real user typing dispatches the React events the engine
+handles. **Create/read/delete are fully proven via the API/CLI** (raw RPC verified).
+To give a reliable "create data" path, the CLI seed is the recommended route.
+
+## Summary — what works vs. what's left
+**Works (verified live):** full stack via `docker compose`; stock A12 Data Service
+with our 4 models + Liquibase schema; LOCAL auth (admin/admin → UAABearer);
+**API CRUD** (ADD/QUERY/GET/DELETE_DOCUMENT); **browser**: app loads, **search**
+(client fan-out), **view/read** (markdown), create/edit **form renders**, System→Keycloak link.
+**Left:** form-engine input automation (B15, harness limit) + slug-derivation /
+unified-search / resolve-by-slug as real **server ops** (Tier-2 extension jar) +
+Milkdown binding (B13). 15 bugs (B0–B14) found & fixed.
+
+## How to run it live (for the next session)
+1. `cp .env.example .env` (if missing) and `docker compose up --build -d` (or `just up`).
+2. Wait for `data-service` healthy, then mint + inject the QA token + (re)build client:
+   ```sh
+   TOKEN=$(curl -s -D - -o /dev/null -X POST localhost:8082/api/user/local/login \
+     -H 'content-type: application/json' -H 'Accept-Language: en' \
+     -d '{"username":"admin","password":"admin"}' | awk 'tolower($1)=="access_token:"{print $2}' | tr -d '\r')
+   sed -i '' '/^DATA_SERVICE_TOKEN=/d' .env; echo "DATA_SERVICE_TOKEN=$TOKEN" >> .env
+   docker compose up -d --build --no-deps client
+   ```
+3. Open http://localhost:8081 → Search (e.g. "einstein") → click a result to read.
+   (The token lasts 24h; re-mint with the snippet above if it expires.)

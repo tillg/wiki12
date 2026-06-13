@@ -61,6 +61,7 @@ export interface FormModel {
     modelReferences: { alias: string; modelType: "document"; purpose: "data binding"; reference: string }[];
   };
   content: {
+    subHeaderBox: unknown; // required by formengine FormModel.Content.isInstance
     footerBox: unknown;
     screens: Screen[];
     fieldConfiguration: { field: unknown[] };

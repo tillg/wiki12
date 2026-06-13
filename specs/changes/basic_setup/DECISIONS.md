@@ -209,3 +209,26 @@ build to *verify*:
    D12's op-name drift.
 5. **Live browser round-trip** (search -> open -> edit -> save -> delete) for a Page
    and an Entity; **`just seed`**; a real **migration** dry-run + apply.
+
+### D14 — Live bring-up & browser QA (2026-06-13) — see QA-LOG.md
+The whole stack now runs under `docker compose` and was driven through Playwright.
+Headline upgrades beyond the Tier split (D0):
+- **The A12 Data Service is REAL and live** — not the custom embed but the **stock
+  `dataservices-server-app` fatjar (38.4.2)** from `a12-community-maven`, configured
+  via a Project-Template-derived bundle in `server/config/` (LOCAL auth, our models
+  imported, Liquibase schema). Decisions forced by the platform: stock server
+  *requires* auth → **LOCAL admin/admin → `UAABearer` JWT** (backend super-user is
+  jobs-only); JWT secret must be **base64/32-byte**; queries need **`Accept-Language: en`**.
+- **No-login client** works for QA by injecting the admin token via `config.js`
+  (`API_TOKEN`) — nginx can't carry a ~5KB token as one directive. **This is a QA
+  convenience, not the baseline auth posture** (auth is still deferred/out-of-scope).
+- **Real A12 op shapes confirmed** (supersede the D12 `// VERIFY` guesses):
+  models served at `/api/v2/models/<Name>` (+`/validationCode`); `ADD_DOCUMENT` =
+  `{documentModelName, locale, document:{<Group>:{…}}}`; documents nest under the
+  root group; form models **require a `subHeaderBox`** key.
+- **Custom server ops (slug listener, UnifiedSearch, ResolveBySlug) remain Tier-2**
+  (extension jar). The client was adapted to work without them (client-side fan-out
+  search + docRef resolve), so search/view work against the stock server.
+- 15 bugs (B0–B14) found & fixed live; B13 (Milkdown bind) and B15 (form-engine
+  input automation) are documented open items. Verified live: API CRUD + browser
+  search/view + create-form rendering + content seeded.

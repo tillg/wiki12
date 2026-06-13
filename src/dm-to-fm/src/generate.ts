@@ -146,6 +146,11 @@ export function generateFormModel(dm: DocumentModel, opts: GenerateOptions = {})
       modelReferences: [{ alias: dmId, modelType: "document", purpose: "data binding", reference: dmId }],
     },
     content: {
+      // subHeaderBox is REQUIRED by the form engine's FormModel.Content.isInstance
+      // check (formengine-core unmarshallFormModel) — omitting it makes the engine
+      // reject the model with "Json is no valid FormModel!" (QA-LOG B10). Minimal
+      // empty box satisfies it.
+      subHeaderBox: { id: "subHeaderBox1", majorButtons: { button: [] }, minorButtons: { button: [] } },
       footerBox: footerBox(),
       screens: [{ id: "screen1", name: "Screen1", screenElements: sections }],
       fieldConfiguration: { field: [] },

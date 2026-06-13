@@ -82,29 +82,40 @@ export interface WriteResult {
   slugChange?: SlugChange;
 }
 
-function extractWriteResult(
-  type: string,
-  previousSlug: string | undefined,
-  raw: { id?: string; document?: ContentDocument; meta?: { slug?: string }; slug?: string },
-): WriteResult {
-  const id = raw.id ?? String(raw.document?.id ?? "");
-  const newSlug = raw.meta?.slug ?? raw.slug ?? String(raw.document?.Slug ?? "");
-  const item: ContentItem = { type, id, slug: newSlug, document: raw.document ?? {} };
-  const result: WriteResult = { item };
-  if (previousSlug && newSlug && previousSlug !== newSlug) {
-    result.slugChange = { old: previousSlug, new: newSlug };
+/** A type ("page", or a model id like "Page_DM") -> the "<Type>_DM" model name. */
+function modelNameOf(type: string): string {
+  if (/_DM$/.test(type)) return type;
+  return `${type.charAt(0).toUpperCase()}${type.slice(1).toLowerCase()}_DM`;
+}
+
+/** Strip the form-engine wrapper keys, leaving the group-keyed field payload the
+ * server's ADD/MODIFY_DOCUMENT expects: { <Group>: { ...fields } } (QA-LOG B14). */
+function toServerDocument(document: ContentDocument): ContentDocument {
+  const out: ContentDocument = {};
+  for (const [k, v] of Object.entries(document)) {
+    if (k === "id" || k === "modelId" || k === "__meta") continue;
+    out[k] = v;
   }
-  return result;
+  return out;
+}
+
+/** docRef ("<Model>/<uuid>") returned by a write -> {id}. */
+function idFromDocRef(dref: string | undefined): string {
+  if (!dref) return "";
+  const i = dref.indexOf("/");
+  return i >= 0 ? dref.slice(i + 1) : dref;
 }
 
 /** Create a new content item; server derives slug + assigns id. */
 export async function createDocument(type: string, document: ContentDocument): Promise<WriteResult> {
-  // VERIFY: ADD_DOCUMENT param shape (model name + document payload).
-  const raw = await rpc<{ id?: string; document?: ContentDocument; meta?: { slug?: string } }>(
-    "ADD_DOCUMENT",
-    { model: type, document },
-  );
-  return extractWriteResult(type, undefined, raw);
+  const model = modelNameOf(type);
+  const raw = await rpc<{ docRef?: string }>("ADD_DOCUMENT", {
+    documentModelName: model,
+    locale: "en",
+    document: toServerDocument(document),
+  });
+  const id = idFromDocRef(raw.docRef);
+  return { item: { type: model, id, slug: raw.docRef ?? docRef(model, id), document } };
 }
 
 /** Update an existing item; the server may re-derive the slug on key-field change. */
@@ -114,16 +125,20 @@ export async function updateDocument(
   document: ContentDocument,
   previousSlug: string,
 ): Promise<WriteResult> {
-  // VERIFY: modify op name + param shape (assumed MODIFY_DOCUMENT with docRef).
-  const raw = await rpc<{ id?: string; document?: ContentDocument; meta?: { slug?: string } }>(
-    "MODIFY_DOCUMENT",
-    { docRef: docRef(type, id), document },
-  );
-  return extractWriteResult(type, previousSlug, raw);
+  const model = modelNameOf(type);
+  const dref = docRef(model, id);
+  await rpc<unknown>("MODIFY_DOCUMENT", {
+    documentModelName: model,
+    docRef: dref,
+    locale: "en",
+    document: toServerDocument(document),
+  });
+  const result: WriteResult = { item: { type: model, id, slug: dref, document } };
+  void previousSlug; // slug derivation needs the extension listener (Tier-2)
+  return result;
 }
 
 /** Delete an item by id. */
 export async function deleteDocument(type: string, id: string): Promise<void> {
-  // VERIFY: delete op name + param shape (assumed DELETE_DOCUMENT with docRef).
-  await rpc<unknown>("DELETE_DOCUMENT", { docRef: docRef(type, id) });
+  await rpc<unknown>("DELETE_DOCUMENT", { docRef: docRef(modelNameOf(type), id) });
 }

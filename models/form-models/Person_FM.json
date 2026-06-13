@@ -37,6 +37,15 @@
     ]
   },
   "content": {
+    "subHeaderBox": {
+      "id": "subHeaderBox1",
+      "majorButtons": {
+        "button": []
+      },
+      "minorButtons": {
+        "button": []
+      }
+    },
     "footerBox": {
       "id": "footerBox1",
       "minorButtons": {
