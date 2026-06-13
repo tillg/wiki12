@@ -108,6 +108,9 @@ services:
       DATA_SERVICE_UPSTREAM: http://data-service:8080
       MODEL_LIFECYCLE_UPSTREAM: http://model-lifecycle:8090
       KEYCLOAK_CONSOLE_URL: http://localhost:${KEYCLOAK_PORT:-8089}/admin
+      # QA-only: admin UAABearer token the nginx proxy attaches to /api calls so the
+      # login-less client works (baseline defers auth — QA-LOG B7). Set in .env.
+      DATA_SERVICE_TOKEN: ${DATA_SERVICE_TOKEN:-}
     depends_on:
       data-service:
         condition: service_healthy

@@ -11,9 +11,49 @@
 // gets one clean, de-duplicated, stably-ordered list. That merge is the pure,
 // unit-tested core.
 
-import { rpc } from "./rpc";
+import { rpcBatch, RpcCallError } from "./rpc";
 
 export type ContentKind = "page" | "entity";
+
+// The content models to fan out over (page + entity types). The architecture's
+// server-side UnifiedSearch op isn't in the stock server (QA-LOG B8/B10), so the
+// client does the batched fan-out itself: one stock simple_search QUERY per model.
+const CONTENT_MODELS: { model: string; type: string; kind: ContentKind }[] = [
+  { model: "Page_DM", type: "page", kind: "page" },
+  { model: "Person_DM", type: "person", kind: "entity" },
+  { model: "Film_DM", type: "film", kind: "entity" },
+  { model: "Location_DM", type: "location", kind: "entity" },
+];
+
+interface QueryEntry {
+  docRef: string;
+  document: Record<string, Record<string, unknown> & { __meta?: unknown }>;
+}
+
+/** Pull the root-group field bag out of an A12 document (fields nest under the group). */
+function rootFields(document: Record<string, unknown>): Record<string, unknown> {
+  const key = Object.keys(document).find((k) => k !== "__meta" && typeof document[k] === "object");
+  return key ? (document[key] as Record<string, unknown>) : {};
+}
+
+function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }): RawHit[] {
+  if (result instanceof RpcCallError || !result) return [];
+  const entries = (result as { entries?: QueryEntry[] }).entries ?? [];
+  return entries.map((e) => {
+    const f = rootFields(e.document);
+    const name = [f.FirstName, f.LastName].filter(Boolean).join(" ");
+    const title = String(f.Title ?? f.Name ?? (name || "") ?? "");
+    const body = String(f.Body ?? f.Description ?? "");
+    return {
+      kind: m.kind,
+      type: m.type,
+      id: e.docRef, // navigate by docRef (real slugs need the extension listener)
+      slug: e.docRef,
+      title,
+      snippet: body.replace(/[#*`>\n]/g, " ").trim().slice(0, 140),
+    };
+  });
+}
 
 export interface SearchHit {
   kind: ContentKind;
@@ -78,19 +118,26 @@ export function mergeResults(lists: RawHit[][]): SearchHit[] {
   return out;
 }
 
-/** Call the server-side UnifiedSearch op and return a clean, merged result set. */
+/** Unified search = client-side batched fan-out (one simple_search QUERY per model). */
 export async function unifiedSearch(params: SearchParams): Promise<SearchHit[]> {
   const query = params.query.trim();
   if (!query) return [];
-  // VERIFY: the exact UnifiedSearch result envelope. The contract states a flat
-  // array of hits; we also accept { results: [...] } and per-model { byModel: [[...]] }
-  // shapes so the UI is robust to the server's final shape.
-  const raw = await rpc<unknown>("UnifiedSearch", {
-    query,
-    ...(params.kind ? { kind: params.kind } : {}),
-    ...(params.type ? { type: params.type } : {}),
-  });
-  return mergeResults(toLists(raw));
+  const models = CONTENT_MODELS.filter(
+    (m) => (!params.type || m.type === params.type) && (!params.kind || m.kind === params.kind),
+  );
+  const batch = models.map((m) => ({
+    method: "QUERY",
+    params: {
+      query: {
+        targetDocumentModel: m.model,
+        projectionName: "document",
+        constraint: { operator: "simple_search", value: query },
+        paging: { pageSize: 25, pageNumber: 0 },
+      },
+    },
+  }));
+  const results = await rpcBatch(batch);
+  return mergeResults(results.map((res, i) => entriesToHits(res, models[i])));
 }
 
 /** Coerce the various plausible server envelopes into RawHit[][]. Pure. */

@@ -38,24 +38,30 @@ export interface ResolveResult {
   found: boolean;
 }
 
-/** Resolve an id-or-slug to a concrete item ref via the custom op. */
+/** Resolve an id-or-slug to a concrete item ref.
+ *
+ * The custom ResolveBySlug op isn't in the stock server (QA-LOG B8), so we resolve
+ * a docRef ("<Model>_DM/<uuid>") directly here; other refs fall back to the op
+ * (and degrade gracefully to not-found if it's absent). */
 export async function resolveRef(ref: string): Promise<ResolveResult> {
-  // VERIFY: ResolveBySlug param/result shape. Contract: {ref} -> resolved ref.
-  return rpc<ResolveResult>("ResolveBySlug", { ref });
+  const m = ref.match(/^([A-Za-z]\w*_DM)\/(.+)$/);
+  if (m) return { type: m[1], id: m[2], slug: ref, found: true };
+  try {
+    return await rpc<ResolveResult>("ResolveBySlug", { ref });
+  } catch {
+    return { type: "", id: "", slug: ref, found: false };
+  }
 }
 
 /** Read a document by technical id. */
 export async function getDocument(type: string, id: string): Promise<ContentItem> {
   // VERIFY: GET_DOCUMENT param key (`docRef`) and result envelope.
-  const result = await rpc<{ document: ContentDocument; meta?: { slug?: string } }>("GET_DOCUMENT", {
-    docRef: docRef(type, id),
+  const dref = docRef(type, id);
+  const result = await rpc<{ document: ContentDocument; docRef?: string }>("GET_DOCUMENT", {
+    docRef: dref,
   });
-  return {
-    type,
-    id,
-    slug: result.meta?.slug ?? String(result.document?.Slug ?? ""),
-    document: result.document,
-  };
+  // Real slugs need the extension listener; until then the docRef is the handle.
+  return { type, id, slug: dref, document: result.document };
 }
 
 /** Read by id-or-slug (resolve, then GET). */

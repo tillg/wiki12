@@ -9,32 +9,37 @@
 // model-serving paths are not pinned in the docs we have. Resolve them against
 // the live stack, then this is the only module to touch.
 
+import { authHeaders } from "../lib/runtimeConfig.ts";
+
 export interface LoadedModels {
   documentModelAsString: string; // raw JSON text — the serializer deserializes from string
   formModelAsJson: unknown; // parsed JSON
   validationCode: string; // JS source string for GeneratedCodeAccessorFactory
 }
 
-// VERIFY: A12 Data Service model-artifact URLs. The form-engine bootstrap example
-// fetches `models/documentModel.json` and `models/validation.js` relative to the
-// app; with our nginx same-origin proxy the Data Service equivalents are assumed
-// to live under /api. Confirm the real paths the running kernel serves (they may
-// be JSON-RPC ops like GET_DOCUMENT_MODEL rather than static files).
+// A12 model-serving endpoints — CONFIRMED against the live stock Data Service
+// (QA-LOG B9): the kernel serves each model at `/api/v2/models/<ModelName>` and
+// the generated validation code at `/api/v2/models/<DM>/validationCode`. Document
+// + form models share the same endpoint (distinguished by the `_DM`/`_FM` name).
+// A content type maps to `<Type>_DM` / `<Type>_FM` (e.g. page -> Page_DM/Page_FM).
+function modelName(type: string, suffix: "DM" | "FM"): string {
+  const t = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+  return `${t}_${suffix}`;
+}
 function documentModelUrl(type: string): string {
-  return `/api/models/${type}/documentModel.json`; // VERIFY
+  return `/api/v2/models/${modelName(type, "DM")}`;
 }
 function validationCodeUrl(type: string): string {
-  return `/api/models/${type}/validation.js`; // VERIFY
+  return `/api/v2/models/${modelName(type, "DM")}/validationCode`;
 }
-
-// Form models come from the Node model-lifecycle service (generated default,
-// persisted) per the integration contract: /lifecycle/form-model/<type>.
 function formModelUrl(type: string): string {
-  return `/lifecycle/form-model/${type}`;
+  return `/api/v2/models/${modelName(type, "FM")}`;
 }
 
 async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { headers: { Accept: "application/json, text/javascript" } });
+  const res = await fetch(url, {
+    headers: { Accept: "application/json, text/javascript", "Accept-Language": "en", ...authHeaders() },
+  });
   if (!res.ok) throw new Error(`Failed to fetch ${url}: HTTP ${res.status} ${res.statusText}`);
   return res.text();
 }

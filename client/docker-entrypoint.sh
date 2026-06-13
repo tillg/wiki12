@@ -7,7 +7,7 @@ envsubst '${DATA_SERVICE_UPSTREAM} ${MODEL_LIFECYCLE_UPSTREAM}' \
   > /etc/nginx/conf.d/default.conf
 
 # Render the runtime SPA config (Keycloak console URL) into the served root.
-envsubst '${KEYCLOAK_CONSOLE_URL}' \
+envsubst '${KEYCLOAK_CONSOLE_URL} ${DATA_SERVICE_TOKEN}' \
   < /usr/share/nginx/html/config.js.template \
   > /usr/share/nginx/html/config.js
 

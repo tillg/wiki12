@@ -6,15 +6,23 @@ import remarkGfm from "remark-gfm";
 import { readByRef, type ContentItem } from "../api/content";
 import { Chip, Banner } from "../components/Ui";
 
+// A12 documents nest fields under the root group (e.g. document.Page.Body), with
+// a sibling __meta (QA-LOG B11) — descend into the first group object.
+function rootFields(item: ContentItem): Record<string, unknown> {
+  const doc = item.document as Record<string, unknown>;
+  const key = Object.keys(doc).find((k) => k !== "__meta" && typeof doc[k] === "object");
+  return key ? (doc[key] as Record<string, unknown>) : doc;
+}
+
 function bodyMarkdown(item: ContentItem): string {
-  // Body field by wiki12 convention is "Body"/"Description" (StringType markdown).
-  const doc = item.document;
-  return String(doc.Body ?? doc.Description ?? doc.body ?? doc.description ?? "");
+  const f = rootFields(item);
+  return String(f.Body ?? f.Description ?? "");
 }
 
 function titleOf(item: ContentItem): string {
-  const doc = item.document;
-  return String(doc.Title ?? doc.title ?? item.slug);
+  const f = rootFields(item);
+  const name = [f.FirstName, f.LastName].filter(Boolean).join(" ");
+  return String(f.Title ?? f.Name ?? (name || item.slug));
 }
 
 export function ViewPage(): ReactElement {

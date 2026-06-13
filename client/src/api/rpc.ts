@@ -7,6 +7,8 @@
 // Batching: the Data Service accepts an array of requests in one HTTP round-trip
 // and one transaction — used for the unified-search fan-out (one QUERY per model).
 
+import { authHeaders } from "../lib/runtimeConfig.ts";
+
 export const RPC_ENDPOINT = "/api/v2/rpc";
 
 export interface RpcRequest<P = unknown> {
@@ -65,7 +67,14 @@ export class RpcCallError extends Error {
 async function postRpc(body: RpcRequest | RpcRequest[]): Promise<unknown> {
   const res = await fetch(RPC_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    // Accept-Language: en — A12 derives the query locale from this header and
+    // rejects the browser default (e.g. "en-GB,en-US;q=0.9") as unsupported (QA B12).
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Language": "en",
+      ...authHeaders(),
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {

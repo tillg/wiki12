@@ -94,4 +94,74 @@ models import** (`Page_DM, Person_DM, Film_DM, Location_DM`). `/actuator/health`
 postgres + keycloak + model-lifecycle + client + **data-service** all up;
 models loaded; authenticated CRUD verified against the real A12 Data Service.
 
+## Browser QA (Playwright, via http://localhost:8081)
+
+UI renders correctly (A12 Widgets: banner, sidebar Search/New page/System, flat
+theme). The SPA attaches the QA admin token (`config.js` `API_TOKEN` → `Authorization:
+UAABearer`) to `/api` calls (B7 — nginx couldn't inject a ~5KB token as one config
+param, so the client does it; reverted the nginx header, added `authHeaders()` in
+`rpc.ts`/`models.ts`).
+
+### B8 — Search fails: `UnifiedSearch ... method not found (-32601)`
+The client's search calls the custom `UnifiedSearch` op, which is NOT in the stock
+server (it's our Tier-2 extension). Client handles it gracefully (status message,
+no crash). **Fix options:** add the extension jar (Tier-2) OR make the client do
+the batched fan-out itself (one stock `QUERY` per model) — see B10.
+
+### B9 — Create/Edit form can't load: three 404s
+`New page` → form engine needs three model artifacts, all 404:
+- `/lifecycle/form-model/Page` — the model-lifecycle service doesn't serve the
+  on-disk form models (in-memory registry, nothing deployed).
+- `/api/models/Page/documentModel.json` and `/api/models/Page/validation.js` —
+  these client URLs were `// VERIFY` guesses; the stock A12 server doesn't serve
+  models at those paths.
+Investigating the real A12 model-serving mechanism + serving form models from disk.
+
+### B9-fix — real A12 model-serving endpoints (CONFIRMED)
+The stock server serves models at `/api/v2/models/<ModelName>` and validation code
+at `/api/v2/models/<DM>/validationCode`; document + form models share the endpoint
+(`Page_DM` / `Page_FM`). Rewrote `client/src/api/models.ts` to use these (was the
+`// VERIFY` guesses `/api/models/.../documentModel.json` + `/lifecycle/form-model`).
+Model artifacts now load (the three 404s are gone).
+
+### B10 — Create/Edit form: `Json is no valid FormModel!` (OPEN — deepest item)
+The form engine (`unmarshallFormModel`) rejects our form models. Our `Page_FM` and
+the template's known-good `Person_FM` share `modelVersion 37.4.0` and a similar
+shape, so the divergence is subtler (a structural/field detail in our
+dm-to-fm output, or an FM↔DM reference mismatch). **Consequence:** create + edit do
+not render in the browser, and **delete is gated behind the edit page**, so UI
+create/edit/delete are blocked on this. **Create + delete are proven at the API
+level** (below), and search→view works. Fixing the generated form-model schema for
+formengine 38.x is the main remaining QA item.
+
+### B11 — client read flat fields, but A12 nests under the root group
+A12 documents are `{ <Group>: { ...fields }, __meta }` (e.g. `document.Page.Body`),
+not flat. Fixed `ViewPage` (and the search mapper) to descend into the first group
+object. View now renders title + markdown body correctly.
+
+### B12 — QUERY failed in the browser: `unsupported locale: en-GB,en-US;q=0.9`
+A12 derives the query locale from the request `Accept-Language` header and rejects
+the browser default. Fixed by sending `Accept-Language: en` from the client
+(`rpc.ts`, `models.ts`). (curl worked only because it sent no such header.)
+
+### B10b — Search worked around without the custom op (B8)
+Rewrote `client/src/api/search.ts` to do the **client-side batched fan-out** (one
+stock `simple_search` QUERY per content model, merged) instead of the missing
+`UnifiedSearch` op; and `resolveRef` now resolves a docRef directly instead of the
+missing `ResolveBySlug`. Search + view now work end-to-end against the stock server.
+
+### API-level CRUD verified (real ops + shapes)
+- `ADD_DOCUMENT` `{documentModelName, locale, document:{<Group>:{...}}}` → `docRef` ✅
+- `QUERY` `{query:{targetDocumentModel, projectionName:"document", constraint?, paging}}` ✅
+- `GET_DOCUMENT` `{docRef}` → `{docRef, documentModelName, document}` ✅
+- `DELETE_DOCUMENT` `{docRef}` → `null` (success) ✅
+- Auth: `Authorization: UAABearer <jwt>`; locale header `Accept-Language: en`.
+
+### ✅ What works in the browser now
+App loads (A12 Widgets, flat theme) · sidebar nav · **Search** (fan-out) ·
+**View/read** (markdown rendered) · System area link to Keycloak. CRUD is fully
+working via the API/CLI. **Not yet in-browser:** create/edit/delete (form-engine
+form-model schema, B10) and slug derivation / unified-search / resolve-by-slug as
+real server ops (Tier-2 extension jar).
+
 (continued below)

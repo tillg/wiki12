@@ -24,10 +24,17 @@ server {
     # Docker's embedded DNS; re-resolve periodically so restarts are picked up.
     resolver 127.0.0.11 ipv6=off valid=10s;
 
+    # Big proxy buffers — the A12 UAA JWT is large (~5KB) (UAA docs note).
+    proxy_buffer_size 32k;
+    proxy_buffers 8 32k;
+    proxy_busy_buffers_size 64k;
+
     # Data Service JSON-RPC (and any other /api paths the kernel serves, e.g. models).
     location ~ ^/api/(?<apipath>.*)$ {
         set $ds_upstream ${DATA_SERVICE_UPSTREAM};
         proxy_pass $ds_upstream/api/$apipath$is_args$args;
+        # NOTE: the QA admin token is attached by the SPA (config.js API_TOKEN),
+        # not here — nginx rejects a ~5KB value as a single directive parameter.
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
