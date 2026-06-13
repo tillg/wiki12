@@ -9,7 +9,7 @@
 // model-serving paths are not pinned in the docs we have. Resolve them against
 // the live stack, then this is the only module to touch.
 
-import { authHeaders } from "../lib/runtimeConfig.ts";
+import { getToken, logout } from "../lib/auth.ts";
 
 export interface LoadedModels {
   documentModelAsString: string; // raw JSON text — the serializer deserializes from string
@@ -37,9 +37,18 @@ function formModelUrl(type: string): string {
 }
 
 async function fetchText(url: string): Promise<string> {
+  const token = getToken();
   const res = await fetch(url, {
-    headers: { Accept: "application/json, text/javascript", "Accept-Language": "en", ...authHeaders() },
+    headers: {
+      Accept: "application/json, text/javascript",
+      "Accept-Language": "en",
+      ...(token ? { Authorization: `UAABearer ${token}` } : {}),
+    },
   });
+  if (res.status === 401) {
+    logout();
+    throw new Error("Your session has expired — please log in again.");
+  }
   if (!res.ok) throw new Error(`Failed to fetch ${url}: HTTP ${res.status} ${res.statusText}`);
   return res.text();
 }

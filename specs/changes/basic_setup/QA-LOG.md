@@ -222,3 +222,20 @@ showed `unhealthy` (which blocks `depends_on: service_healthy`, forcing `--no-de
 Fixed: invoke `bash -c` explicitly; keycloak readiness is on the mgmt port `:9000`;
 added `start_period` for the JVM warm-up. **All 5 services now report healthy**, so
 `just up` works without `--no-deps`.
+
+### B17 — Added a real LOGIN screen (user request) — replaces the token shim
+The user expected the "regular login", not a hidden token. The baseline client had
+**no login UI** (auth was deferred), and the injected admin token kept expiring
+(recurring 401s). Replaced the token-injection shim with a proper auth flow:
+- `client/src/lib/auth.ts` — `login(user,pass)` → `POST /api/user/local/login`,
+  stores the `UAABearer` JWT in localStorage (survives reload), pub-sub auth state,
+  `logout()`, used by `rpc.ts`/`models.ts`; a **401 auto-logs-out** → login screen.
+- `client/src/pages/LoginPage.tsx` — username/password form (default admin/admin).
+- `App.tsx` — gates the shell behind auth; header shows the user + a **Log out** button.
+- Removed the token plumbing (`config.js` API_TOKEN, `DATA_SERVICE_TOKEN` env,
+  `authHeaders`). Also fixed **index.html caching** in nginx (no-store) so redeploys
+  aren't masked by a stale bundle; hashed `/assets` stay immutable.
+**Verified live:** fresh load → login screen; sign in (admin/admin) → app;
+authenticated search works; reload keeps the session; Log out → login screen. ✅
+This partially un-defers auth (login + token handling) — full route/role
+enforcement (RBAC) is still out of baseline scope.

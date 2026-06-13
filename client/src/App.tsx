@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { ThemeProvider } from "styled-components";
 import { BrowserRouter, Link, Route, Routes, useNavigate } from "react-router-dom";
@@ -13,6 +14,8 @@ import { SearchPage } from "./pages/SearchPage";
 import { ViewPage } from "./pages/ViewPage";
 import { EditPage } from "./pages/EditPage";
 import { SystemPage } from "./pages/SystemPage";
+import { LoginPage } from "./pages/LoginPage";
+import { getUser, isAuthenticated, logout, onAuthChange } from "./lib/auth.ts";
 
 function Sidebar(): ReactElement {
   const navigate = useNavigate();
@@ -30,6 +33,17 @@ function Shell(): ReactElement {
       main={
         <ApplicationHeader
           leftSlots={<Link to="/" style={{ color: "inherit", textDecoration: "none", fontWeight: 700 }}>wiki12</Link>}
+          rightSlots={
+            <span style={{ display: "flex", alignItems: "center", gap: "0.75rem", fontSize: "0.85rem" }}>
+              <span style={{ opacity: 0.8 }}>{getUser()}</span>
+              <button
+                onClick={() => logout()}
+                style={{ background: "transparent", border: "1px solid currentColor", color: "inherit", borderRadius: 4, padding: "0.2rem 0.6rem", cursor: "pointer" }}
+              >
+                Log out
+              </button>
+            </span>
+          }
         />
       }
       sub={<Sidebar />}
@@ -50,12 +64,18 @@ function Shell(): ReactElement {
 }
 
 export default function App(): ReactElement {
+  const [authed, setAuthed] = useState(isAuthenticated());
+  useEffect(() => onAuthChange(() => setAuthed(isAuthenticated())), []);
   return (
     <ThemeProvider theme={flatTheme}>
       <GlobalStyles />
-      <BrowserRouter>
-        <Shell />
-      </BrowserRouter>
+      {authed ? (
+        <BrowserRouter>
+          <Shell />
+        </BrowserRouter>
+      ) : (
+        <LoginPage />
+      )}
     </ThemeProvider>
   );
 }

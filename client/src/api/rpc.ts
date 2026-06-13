@@ -7,7 +7,7 @@
 // Batching: the Data Service accepts an array of requests in one HTTP round-trip
 // and one transaction — used for the unified-search fan-out (one QUERY per model).
 
-import { authHeaders } from "../lib/runtimeConfig.ts";
+import { getToken, logout } from "../lib/auth.ts";
 
 export const RPC_ENDPOINT = "/api/v2/rpc";
 
@@ -65,6 +65,7 @@ export class RpcCallError extends Error {
 }
 
 async function postRpc(body: RpcRequest | RpcRequest[]): Promise<unknown> {
+  const token = getToken();
   const res = await fetch(RPC_ENDPOINT, {
     method: "POST",
     // Accept-Language: en — A12 derives the query locale from this header and
@@ -73,10 +74,15 @@ async function postRpc(body: RpcRequest | RpcRequest[]): Promise<unknown> {
       "Content-Type": "application/json",
       Accept: "application/json",
       "Accept-Language": "en",
-      ...authHeaders(),
+      ...(token ? { Authorization: `UAABearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
   });
+  // Session expired/invalid → clear it so the app routes back to the login screen.
+  if (res.status === 401) {
+    logout();
+    throw new Error("Your session has expired — please log in again.");
+  }
   if (!res.ok) {
     throw new Error(`RPC transport error: HTTP ${res.status} ${res.statusText}`);
   }
