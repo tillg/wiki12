@@ -22,8 +22,13 @@ export interface LoadedModels {
 // the generated validation code at `/api/v2/models/<DM>/validationCode`. Document
 // + form models share the same endpoint (distinguished by the `_DM`/`_FM` name).
 // A content type maps to `<Type>_DM` / `<Type>_FM` (e.g. page -> Page_DM/Page_FM).
+// `type` may be a bare type ("location") OR a model id ("Location_DM") — when
+// editing, the resolved item carries the model id. Strip any `_DM`/`_FM` suffix
+// first, then normalize case, so "Location_DM" -> "Location_FM" (not the buggy
+// "Location_dm_FM" — QA-LOG B18).
 function modelName(type: string, suffix: "DM" | "FM"): string {
-  const t = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+  const base = type.replace(/_(DM|FM)$/i, "");
+  const t = base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
   return `${t}_${suffix}`;
 }
 function documentModelUrl(type: string): string {

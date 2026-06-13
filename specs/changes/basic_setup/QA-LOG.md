@@ -239,3 +239,23 @@ The user expected the "regular login", not a hidden token. The baseline client h
 authenticated search works; reload keeps the session; Log out → login screen. ✅
 This partially un-defers auth (login + token handling) — full route/role
 enforcement (RBAC) is still out of baseline scope.
+
+### B18 — Edit: 404 `/api/v2/models/Location_dm_FM` (FIXED)
+Editing an existing item passed the **model id** (`Location_DM`) as the type into
+`models.ts modelName()`, which only capitalized the first char + lowercased the
+rest → `Location_dm_FM` (404). Fixed `modelName` to strip a trailing `_DM`/`_FM`
+before normalizing → `Location_FM`. **Edit form now loads.** (Found because I had
+tested *create* (type="Page") but not *edit-existing*, where type = model id — a
+genuine QA-coverage gap.)
+
+### B19 — Edit: existing field values don't pre-populate (OPEN)
+The edit form renders but the fields are empty — the persisted document isn't
+showing in the A12 form engine. Passing the group-keyed fields (+id/modelId, minus
+`__meta`) as `data.document` isn't enough; the engine needs the document run through
+the kernel document-processing path (`documentService.parseDates` +
+`preProcessDocument` with the validation code, per the form-engine data-provider
+example) to become typed field instances. This is the same root area as **B15**
+(create-form inputs not captured under Playwright). **Form-based create/edit is
+therefore not yet functional end-to-end**; content mutations work via the API/CLI.
+This A12 form-engine value-binding (load + read-back) is the key remaining client
+integration task.

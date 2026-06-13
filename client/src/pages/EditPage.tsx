@@ -120,6 +120,7 @@ export function EditPage(): ReactElement {
         <FormEngineHost
           models={models}
           initialDocument={existing?.document}
+          initialDocId={existing?.slug}
           onReady={(h) => {
             handleRef.current = h;
           }}

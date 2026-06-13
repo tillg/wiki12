@@ -56,6 +56,8 @@ export interface FormEngineHostProps {
   models: LoadedModels;
   /** Existing document to edit; omit/undefined for a create form. */
   initialDocument?: ContentDocument;
+  /** docRef of the existing document (used as the engine document id on edit). */
+  initialDocId?: string;
   /** Receives a handle to read the current document for save. */
   onReady?: (handle: FormEngineHandle) => void;
 }
@@ -91,14 +93,34 @@ export function FormEngineHost(props: FormEngineHostProps): ReactElement {
         defaultValueParser(documentModel),
       );
 
-      // VERIFY: how to seed an EXISTING document. The docs show createEmptyDocument
-      // for new docs; for edit we start empty then expect the engine to accept the
-      // loaded payload as the data.document. Here we pass initialDocument when given.
-      const document =
-        (props.initialDocument as unknown) ?? createEmptyDocument(documentModel, formModel);
+      // Seed the engine document. New docs use createEmptyDocument. For edit, the
+      // engine wants the group-keyed field bag (NOT the server's __meta) plus
+      // `id`/`modelId` — same shape as the data-provider example in the form-engine
+      // docs (QA-LOG B19). Merging over an empty document guarantees every field
+      // the form expects is present even if absent on the stored doc.
+      let document: unknown;
+      if (props.initialDocument) {
+        const src = props.initialDocument as Record<string, unknown>;
+        const fields: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(src)) {
+          if (k === "__meta" || k === "id" || k === "modelId") continue;
+          fields[k] = v;
+        }
+        // modelId is the docRef prefix ("Location_DM/uuid" -> "Location_DM").
+        const modelId = (props.initialDocId ?? "").split("/")[0] || "unknown";
+        document = {
+          ...(createEmptyDocument(documentModel, formModel) as object),
+          ...fields,
+          id: props.initialDocId ?? "existing",
+          modelId,
+        };
+      } else {
+        document = createEmptyDocument(documentModel, formModel);
+      }
 
       const initialState = createEngineStore({
-        data: { document },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data: { document: document as any },
         locale: Locale.fromString("en_US") as Locale,
         models: { formModel, documentModel, validatorProvider },
       });
