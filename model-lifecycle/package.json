@@ -1,0 +1,22 @@
+{
+  "name": "@wiki12/model-lifecycle",
+  "version": "0.1.0",
+  "description": "wiki12 model-lifecycle service: default form-model generation + TS migration runner (transpile + sandbox).",
+  "type": "module",
+  "license": "EUPL-1.2",
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "optionalDependencies": {
+    "isolated-vm": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.6"
+  }
+}

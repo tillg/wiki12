@@ -1,0 +1,79 @@
+# wiki12 Java A12 Data Service — Spring configuration.
+#
+# Baseline profile = external Postgres (findings §6 / ADR-0005). Auth (Keycloak) is
+# referenced but NOT enforced in the baseline (proposal out-of-scope).
+#
+# Many keys mirror the A12 Data Services docs
+# (docs/a12/data_services/dataservices-documentation-src.md). VERIFY notes mark the
+# places where a key name or value is inferred.
+
+spring:
+  application:
+    name: wiki12-data-service
+  profiles:
+    # Activate the A12 "external Postgres" profile by default (findings §6). This is
+    # the documented profile name: dataservices-external_postgres.
+    active: dataservices-external_postgres
+  datasources:
+    # A12 uses a multi-datasource layout under spring.datasources.dataservices.* (NOT
+    # the singular spring.datasource.*). Values read from env so the compose stack can
+    # inject them (the prompt's SPRING_DATASOURCES_DATASERVICES_* env names map here via
+    # Spring's relaxed binding: SPRING_DATASOURCES_DATASERVICES_URL -> .dataservices.url).
+    dataservices:
+      url: ${SPRING_DATASOURCES_DATASERVICES_URL:jdbc:postgresql://postgres:5432/wiki12}
+      username: ${SPRING_DATASOURCES_DATASERVICES_USERNAME:wiki12}
+      password: ${SPRING_DATASOURCES_DATASERVICES_PASSWORD:wiki12}
+      # The external_postgres profile sets jpa.database + driver; repeated here so the
+      # values are explicit even if the profile is overridden.
+      driver-class-name: org.postgresql.Driver
+      jpa:
+        database: postgresql
+        # Schema is provisioned by A12's Liquibase changesets on startup (do not let
+        # Hibernate manage DDL).
+        hibernate:
+          ddlAuto: none
+
+mgmtp:
+  a12:
+    dataservices:
+      jsonRpc:
+        # Whitelist the wiki12 custom operations alongside the A12 core operation groups
+        # (dev_tutorial_backend_custom_endpoint.md). Without this, Data Services rejects
+        # the custom methods.
+        # VERIFY: the leading A12 operation-group tokens
+        # (A12_INTERNAL_OPERATIONS, ATTACHMENT_OPERATIONS, CDD_OPERATIONS,
+        #  DOCUMENT_OPERATIONS, LINK_OPERATIONS) are the documented defaults — confirm
+        # the exact set required so core CRUD/QUERY still work after we override this list.
+        allowedOperations:
+          - A12_INTERNAL_OPERATIONS
+          - ATTACHMENT_OPERATIONS
+          - CDD_OPERATIONS
+          - DOCUMENT_OPERATIONS
+          - LINK_OPERATIONS
+          - ResolveBySlug
+          - UnifiedSearch
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  # Health endpoint at /actuator/health (default base-path).
+
+# --- Keycloak (referenced, NOT enforced in baseline) -------------------------------
+# Auth wiring is left here as a documented anchor for the later auth change; the
+# baseline does not protect routes/roles (ADR-0005 "Identity").
+# VERIFY: the actual A12 UAA/Keycloak property keys (the tutorial uses A12 UAA, not
+# raw Spring Security OAuth2). Fill these in when the auth change lands.
+#
+# wiki12:
+#   keycloak:
+#     issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8089/realms/wiki12}
+#     admin-console-url: ${KEYCLOAK_ADMIN_URL:http://localhost:8089/admin}

@@ -132,13 +132,24 @@ def validate(path, allowed_versions):
     # Config lives on the fields (sme-dm-ba-docs §Annotations: name/value pairs per
     # element). Collect (field, its wiki12.* annotations).
     key_orders, derived_roles, n_searchable = [], [], 0
+    # markdown body/description: a searchable String field with lineBreaksPermitted.
+    has_markdown_body = False
     for r in roots:
         if r.get("type") != "Group":
             continue
         for e in walk(r.get("Group", {}).get("elements", [])):
             if e.get("type") != "Field":
                 continue
-            for a in e.get("annotations", []):
+            anns = e.get("annotations", [])
+            searchable = any(a.get("name") == "wiki12.searchable" for a in anns)
+            st = e.get("Field", {}).get("fieldType", {})
+            line_breaks = (st.get("type") == "StringType"
+                           and st.get("StringType", {}).get("lineBreaksPermitted") is True)
+            derived = next((a.get("value") for a in anns if a.get("name") == "wiki12.derived"), None)
+            # the long-text body/description (markdown) — not the derived searchText blob
+            if line_breaks and searchable and derived != "searchText":
+                has_markdown_body = True
+            for a in anns:
                 name, val = a.get("name"), a.get("value")
                 if name == "wiki12.keyField":
                     key_orders.append((val, e.get("name")))
@@ -158,6 +169,11 @@ def validate(path, allowed_versions):
         errs.append("more than one field with wiki12.derived=searchText")
     if n_searchable == 0:
         warns.append("no field annotated wiki12.searchable — searchText blob would be empty")
+    # domain.md: every content type carries a markdown body/description field —
+    # a searchable StringType with lineBreaksPermitted (distinct from searchText).
+    if not has_markdown_body:
+        errs.append("no searchable markdown field (StringType + lineBreaksPermitted) — "
+                    "page needs a 'body', entities a 'description' (domain.md §Markdown)")
 
     return errs, warns
 

@@ -1,0 +1,14 @@
+# Minimal local user so the A12 LocalUserManager bean instantiates. Login is NOT
+# enforced for the wiki12 baseline (the client makes unauthenticated requests that
+# the backend grants super-user privileges to) — this file just satisfies the
+# stock server's UAA wiring. Plain password is fine: LOCAL auth is dev-only
+# (UAA docs §"Local authentication"). Authorities map to roles.yaml role names.
+username: "admin"
+password: "admin"
+authorities:
+  - "admin"
+  - "user"
+  - "systemAdmin"
+email: admin@wiki12.local
+firstname: wiki12
+lastname: Administrator

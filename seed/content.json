@@ -1,0 +1,54 @@
+{
+  "_comment": "Sample wiki12 content. Field keys match the document-model field names exactly. Slug + searchText are derived server-side by the WikiContentLifecycleListener, so they are NOT provided here.",
+  "pages": [
+    {
+      "Title": "Albert Einstein",
+      "Body": "# Albert Einstein\n\nTheoretical physicist (1879-1955), known for the theory of **relativity**.\nSee also [Ulm](page:ulm)."
+    },
+    {
+      "Title": "Relativity",
+      "Body": "# Relativity\n\nThe physics of space and time. Special relativity (1905) and general relativity (1915)."
+    },
+    {
+      "Title": "Ulm",
+      "Body": "# Ulm\n\nA city in Baden-Wuerttemberg, Germany; birthplace of Albert Einstein."
+    }
+  ],
+  "entities": [
+    {
+      "type": "person",
+      "fields": {
+        "FirstName": "Till",
+        "LastName": "Gartner",
+        "Nationality": "German",
+        "Description": "Maintainer of wiki12. Expected slug: `person:till_gartner`."
+      }
+    },
+    {
+      "type": "person",
+      "fields": {
+        "FirstName": "Albert",
+        "LastName": "Einstein",
+        "Nationality": "German",
+        "Description": "Physicist. Distinct from the `page:albert_einstein` page - same name, different namespace."
+      }
+    },
+    {
+      "type": "film",
+      "fields": {
+        "Title": "Oppenheimer",
+        "ReleaseYear": "2023",
+        "Director": "Christopher Nolan",
+        "Description": "2023 biographical film; touches on early 20th-century physics."
+      }
+    },
+    {
+      "type": "location",
+      "fields": {
+        "Name": "Ulm",
+        "Country": "Germany",
+        "Description": "City on the Danube; the `location:ulm` entity (distinct from the `page:ulm` page)."
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+// wiki12 Java A12 Data Service — root settings.
+// Single Gradle build (this is the ONLY place wiki12 uses Gradle — ADR-0005).
+//
+// NOTE: pluginManagement {} MUST be the first statement in the file (Gradle rule);
+// rootProject.name and everything else come after it (QA bug B3).
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'a12-community-maven'
+                    url = 'https://artifacts.geta12.com/artifactory/a12-community-maven/'
+                }
+            }
+            filter {
+                includeGroupByRegex 'com\\.mgmtp\\.a12.*'
+            }
+        }
+    }
+}
+
+rootProject.name = 'wiki12-data-service'

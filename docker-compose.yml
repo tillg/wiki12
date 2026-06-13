@@ -1,0 +1,116 @@
+# wiki12 — full stack (ADR-0005: just + docker-compose, no k8s/Helm).
+#
+# Services & ports (host:container):
+#   client          8081:80     nginx serving the React app; proxies /api -> data-service, /lifecycle -> model-lifecycle
+#   data-service    8082:8080   A12 Data Service (Java/Spring Boot); JSON-RPC at POST /api/v2/rpc
+#   postgres        8083:5432   PostgreSQL (volume-backed)
+#   model-lifecycle 8090:8090   Node service: form-model generation + TS migration runner
+#   keycloak        8089:8080   sole user store; seeds admin/admin (auth not consumed in baseline)
+#
+# One stack version is stamped from the root VERSION file (ADR-0005).
+
+name: wiki12
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wiki12}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wiki12}
+      POSTGRES_DB: ${POSTGRES_DB:-wiki12}
+    ports:
+      - "${POSTGRES_PORT:-8083}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wiki12} -d ${POSTGRES_DB:-wiki12}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8089}:8080"
+    volumes:
+      - ./docker/keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  data-service:
+    build:
+      context: ./server
+      args:
+        WIKI12_VERSION: ${WIKI12_VERSION:-0.1.0}
+    environment:
+      # Profiles: A12-provided (uaa/rpc/actuators/embedded contentstore/external pg)
+      # + the template's `shared` + our no-login `wiki12` profile (QA-LOG B6).
+      SPRING_PROFILES_ACTIVE: dataservices-uaa,dataservices-rpc,dataservices-actuators,dataservices-embedded_contentstore,dataservices-external_postgres,shared,wiki12
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/wiki12/config/
+      SPRING_DATASOURCES_DATASERVICES_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-wiki12}
+      SPRING_DATASOURCES_DATASERVICES_USERNAME: ${POSTGRES_USER:-wiki12}
+      SPRING_DATASOURCES_DATASERVICES_PASSWORD: ${POSTGRES_PASSWORD:-wiki12}
+      # NOTE: the wiki12 custom ops (ResolveBySlug, UnifiedSearch) live in the
+      # extension jar that is NOT in the stock fatjar (QA-LOG B4) — not allow-listed here.
+    ports:
+      - "${DATA_SERVICE_PORT:-8082}:8080"
+    volumes:
+      - ./models:/opt/wiki12/models:ro
+      - ./server/config:/opt/wiki12/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /actuator/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  model-lifecycle:
+    build:
+      context: .
+      dockerfile: model-lifecycle/Dockerfile
+      args:
+        WIKI12_VERSION: ${WIKI12_VERSION:-0.1.0}
+    environment:
+      WIKI12_DATA_SERVICE_URL: http://data-service:8080
+      MODEL_LIFECYCLE_PORT: "8090"
+    ports:
+      - "${MODEL_LIFECYCLE_PORT:-8090}:8090"
+    depends_on:
+      data-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:8090/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  client:
+    build:
+      context: ./client
+      args:
+        WIKI12_VERSION: ${WIKI12_VERSION:-0.1.0}
+    ports:
+      - "${CLIENT_PORT:-8081}:80"
+    environment:
+      # nginx proxies these upstreams (see client/nginx.conf.template)
+      DATA_SERVICE_UPSTREAM: http://data-service:8080
+      MODEL_LIFECYCLE_UPSTREAM: http://model-lifecycle:8090
+      KEYCLOAK_CONSOLE_URL: http://localhost:${KEYCLOAK_PORT:-8089}/admin
+    depends_on:
+      data-service:
+        condition: service_healthy
+
+volumes:
+  pgdata:

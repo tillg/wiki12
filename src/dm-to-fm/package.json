@@ -7,6 +7,7 @@
   "bin": { "dm-to-fm": "src/cli.ts" },
   "scripts": {
     "generate": "node --experimental-strip-types src/cli.ts",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },

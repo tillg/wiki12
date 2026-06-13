@@ -1,0 +1,228 @@
+{
+  "header": {
+    "id": "Migration_DM",
+    "modelType": "document",
+    "modelVersion": "28.4.0",
+    "locales": [
+      {
+        "code": "en"
+      },
+      {
+        "code": "de"
+      }
+    ],
+    "labels": [],
+    "annotations": [
+      {
+        "name": "roles",
+        "value": "user"
+      }
+    ],
+    "modelReferences": []
+  },
+  "content": {
+    "modelInfo": {
+      "name": "Migration_DM",
+      "immutable": false
+    },
+    "modelConfig": {
+      "timeZone": "UTC",
+      "decimalSeparator": ".",
+      "conditionLanguage": {
+        "code": "en_US"
+      }
+    },
+    "modelRoot": {
+      "rootGroups": [
+        {
+          "type": "Group",
+          "id": "G1",
+          "name": "Migration",
+          "Group": {
+            "repeatability": 1,
+            "elements": [
+              {
+                "type": "Field",
+                "id": "F1",
+                "name": "targetModel",
+                "annotations": [
+                  {
+                    "name": "wiki12.keyField",
+                    "value": "1"
+                  },
+                  {
+                    "name": "wiki12.searchable",
+                    "value": "true"
+                  }
+                ],
+                "Field": {
+                  "fieldType": {
+                    "type": "StringType"
+                  },
+                  "label": [
+                    {
+                      "locale": "en",
+                      "text": "Target Model"
+                    },
+                    {
+                      "locale": "de",
+                      "text": "Zielmodell"
+                    }
+                  ],
+                  "requirednessConfig": {
+                    "mode": "absoluteOrRelativeToNextRepAncestor"
+                  }
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F2",
+                "name": "fromVersion",
+                "annotations": [
+                  {
+                    "name": "wiki12.keyField",
+                    "value": "2"
+                  }
+                ],
+                "Field": {
+                  "fieldType": {
+                    "type": "NumberType"
+                  },
+                  "label": [
+                    {
+                      "locale": "en",
+                      "text": "From Version"
+                    },
+                    {
+                      "locale": "de",
+                      "text": "Von Version"
+                    }
+                  ],
+                  "requirednessConfig": {
+                    "mode": "absoluteOrRelativeToNextRepAncestor"
+                  }
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F3",
+                "name": "toVersion",
+                "annotations": [
+                  {
+                    "name": "wiki12.keyField",
+                    "value": "3"
+                  }
+                ],
+                "Field": {
+                  "fieldType": {
+                    "type": "NumberType"
+                  },
+                  "label": [
+                    {
+                      "locale": "en",
+                      "text": "To Version"
+                    },
+                    {
+                      "locale": "de",
+                      "text": "Zu Version"
+                    }
+                  ],
+                  "requirednessConfig": {
+                    "mode": "absoluteOrRelativeToNextRepAncestor"
+                  }
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F4",
+                "name": "Slug",
+                "annotations": [
+                  {
+                    "name": "wiki12.derived",
+                    "value": "slug"
+                  }
+                ],
+                "Field": {
+                  "fieldType": {
+                    "type": "StringType"
+                  },
+                  "label": [
+                    {
+                      "locale": "en",
+                      "text": "Slug"
+                    },
+                    {
+                      "locale": "de",
+                      "text": "Slug"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F5",
+                "name": "script",
+                "annotations": [
+                  {
+                    "name": "wiki12.searchable",
+                    "value": "true"
+                  }
+                ],
+                "Field": {
+                  "fieldType": {
+                    "type": "StringType",
+                    "StringType": {
+                      "lineBreaksPermitted": true
+                    }
+                  },
+                  "label": [
+                    {
+                      "locale": "en",
+                      "text": "Migration Script (TypeScript)"
+                    },
+                    {
+                      "locale": "de",
+                      "text": "Migrationsskript (TypeScript)"
+                    }
+                  ],
+                  "requirednessConfig": {
+                    "mode": "absoluteOrRelativeToNextRepAncestor"
+                  }
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F6",
+                "name": "searchText",
+                "annotations": [
+                  {
+                    "name": "wiki12.derived",
+                    "value": "searchText"
+                  }
+                ],
+                "Field": {
+                  "fieldType": {
+                    "type": "StringType",
+                    "StringType": {
+                      "lineBreaksPermitted": true
+                    }
+                  },
+                  "label": [
+                    {
+                      "locale": "en",
+                      "text": "Search Text"
+                    },
+                    {
+                      "locale": "de",
+                      "text": "Suchtext"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

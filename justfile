@@ -1,0 +1,66 @@
+# wiki12 operator entrypoint (ADR-0005). Wraps docker-compose + per-component
+# scripts. `just` over docker-compose; replaces the template's gradle tasks.
+
+set dotenv-load := true
+
+# stamp every image with the single stack version (root VERSION file)
+export WIKI12_VERSION := `cat VERSION`
+
+default:
+    @just --list
+
+# --- stack lifecycle -------------------------------------------------------
+
+# start the full stack (build if needed) and follow logs
+dev:
+    docker compose up --build
+
+# start detached
+up:
+    docker compose up --build -d
+
+# stop the stack (keep volumes/images)
+dev-stop:
+    docker compose down
+
+# stop and remove built images + volumes
+dev-clean:
+    docker compose down --rmi local --volumes
+
+# tail logs of all (or one) service:  just logs data-service
+logs service="":
+    docker compose logs -f {{service}}
+
+# validate the compose file without starting anything
+check:
+    docker compose config -q && echo "compose OK"
+
+# --- models ----------------------------------------------------------------
+
+# validate all document models
+validate-models:
+    python3 src/model_tools/validate.py models/document-models/*.json
+
+# (re)generate default form models from document models
+generate-forms:
+    node --experimental-strip-types src/dm-to-fm/src/cli.ts models/document-models/*_DM.json --out models/form-models
+
+# --- components (offline tests) -------------------------------------------
+
+test-cli:
+    cd cli && npm install && npm test
+
+test-lifecycle:
+    cd model-lifecycle && npm install && npm test
+
+test-forms:
+    cd src/dm-to-fm && npm install && npm test
+
+# run every offline test + model validation
+test: validate-models test-forms test-cli test-lifecycle
+
+# --- content ---------------------------------------------------------------
+
+# seed sample pages + entities (needs a running stack)
+seed:
+    node --experimental-strip-types seed/seed.ts

@@ -30,6 +30,9 @@ Checks currently enforced (each maps to a finding or a reference-model fact):
   known element types, known `fieldType.type`, unique element ids
 - **wiki12 derived-field config**: every field named in a `wiki12.*` annotation
   (`keyFields`, `searchFields`, `slugField`, `searchField`) must exist in the model
+- **markdown body/description present**: at least one searchable `StringType`
+  field with `lineBreaksPermitted` (distinct from the derived `searchText` blob)
+  — page needs a `body`, entities a `description` (domain.md §Markdown)
 
 As we learn more from the SME, add checks here (and a matching note in the
 sample-models README *Findings* section).

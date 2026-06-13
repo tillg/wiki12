@@ -1,0 +1,7 @@
+// Runtime config template — rendered at container start by envsubst on
+// ${KEYCLOAK_CONSOLE_URL}. Served at /config.js (no-store) and read by the SPA
+// via window.__WIKI12_CONFIG__ (see src/lib/runtimeConfig.ts), so the same
+// static bundle works against any backend without a rebuild.
+window.__WIKI12_CONFIG__ = {
+  KEYCLOAK_CONSOLE_URL: "${KEYCLOAK_CONSOLE_URL}",
+};

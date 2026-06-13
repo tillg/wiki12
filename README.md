@@ -9,43 +9,66 @@ under Docker Compose.
 
 ## Status
 
-Early specification phase. The first concrete change, **`basic_setup`**, defines
-the foundational system end to end. See its spec artifacts:
+**`basic_setup` baseline implemented (offline-verified).** The first change,
+**`basic_setup`**, bootstraps the whole system end to end. Every component is in
+place; everything verifiable without a live A12 stack is built and tested:
 
-- [`specs/changes/basic_setup/proposal.md`](specs/changes/basic_setup/proposal.md) — what & why
-- [`specs/changes/basic_setup/domain.md`](specs/changes/basic_setup/domain.md) — domain concepts
-- [`specs/changes/basic_setup/architecture.md`](specs/changes/basic_setup/architecture.md) — technical approach
-- [`specs/changes/basic_setup/plan.md`](specs/changes/basic_setup/plan.md) — implementation steps (starts with an A12 research phase)
+- **108 tests pass** — `wiki12` CLI (39), model-lifecycle service (18), DM→FM
+  generator (5), web client (21), Java `Slugifier` (25).
+- **4 data models validate** (`page`, `person`, `film`, `location`) + the
+  `Migration` model; default form models generated, plus an explicit `Page` form.
+- **The web client type-checks and bundles against the real A12 widget stack**
+  (`@com.mgmtp.a12.*` from `artifacts.geta12.com`).
+- **`docker compose config` is valid** for the five-service stack.
 
-### Where we are — `basic_setup` Step 0 (A12 research) done, ⏸ at review gate
+What still needs a **running stack / external build to verify** (no missing code —
+see [`specs/changes/basic_setup/DECISIONS.md`](specs/changes/basic_setup/DECISIONS.md)
+D0/D13): building the Java Data Service image (Gradle pulls A12 Maven artifacts),
+`docker compose up` health, the **slug-concurrency spike**, the live browser
+round-trip, and confirming the handful of A12 `// VERIFY` op/event shapes the
+TS/Java code assumes (listed in each component's `README.md`).
 
-Step 0 ("understand & document A12") is complete except its final **review
-gate**. We mirrored the A12 docs into the repo and answered the research
-questions; the headline result is that the **server-side extensibility gate is a
-GO** — slug logic, ID/slug resolution, and substring search can all live in the
-stock A12 Data Service (no façade needed). What got built:
+Spec artifacts: [proposal](specs/changes/basic_setup/proposal.md) ·
+[domain](specs/changes/basic_setup/domain.md) ·
+[architecture](specs/changes/basic_setup/architecture.md) ·
+[plan](specs/changes/basic_setup/plan.md) ·
+[findings](specs/changes/basic_setup/findings-a12.md) ·
+[decisions](specs/changes/basic_setup/DECISIONS.md).
 
-- **[`docs/a12/index.md`](docs/a12/index.md)** — in-repo mirror of the A12 docs
-  (geta12.com 2025.06/ext5, **104 pages**) and the **A12 Widgets Showcase**
-  (**65 pages**, incl. the Lexical Rich Text Editor and the Quick Start guide).
-- **[`src/scrape_geta12/`](src/scrape_geta12)** + **[`src/scrape_showcase/`](src/scrape_showcase)**
-  — the re-runnable scraper tools that produced those mirrors (see their READMEs).
+## Repository layout
 
-**👉 Next session — read these, in order:**
+| Path | What |
+|---|---|
+| `server/` | A12 Data Service (Java/Spring Boot): slug listener, `ResolveBySlug` + `UnifiedSearch` ops, `Slugifier`, Dockerfile |
+| `client/` | React + TypeScript web client on A12 Widgets (search/read/edit/delete, Milkdown, System area), nginx |
+| `model-lifecycle/` | Node service: form-model generation + TS migration runner (esbuild + `isolated-vm` sandbox) |
+| `cli/` | the `wiki12` CLI (Node/TS) |
+| `models/` | canonical document models + generated/explicit form models |
+| `src/dm-to-fm/`, `src/model_tools/` | shared DM→FM generator + the model validator |
+| `docker/`, `docker-compose.yml`, `justfile` | Postgres/Keycloak config + orchestration |
+| `seed/` | sample content + a seed runner (drives the CLI) |
+| `docs/a12/` | in-repo A12 docs mirror (104 pages) + Widgets Showcase (65 pages) |
 
-1. **[`specs/changes/basic_setup/findings-a12.md`](specs/changes/basic_setup/findings-a12.md)**
-   — the research findings. Start with §0 (the GO verdict) and **§8 (open
-   questions / decisions)**: default form model (no server-side generation),
-   unified search shape, migration approach, distribution via the A12 Project
-   Template, **registry/credentials (likely blocker)**, and markdown vs. rich text.
-2. Skim **[`docs/a12/index.md`](docs/a12/index.md)** — note the ⚠️ Quick Start
-   callout at the top (also in [`CONTEXT.md`](CONTEXT.md)).
-3. Re-check the spec artifacts above against the findings; §8 lists suggested
-   updates to ADR-0002/0003, `domain.md`, and `architecture.md`.
+## Running it
 
-Once the findings are approved and the §8 decisions are made, the review gate
-closes and implementation starts at **Step 1** (project scaffolding) in
-[`plan.md`](specs/changes/basic_setup/plan.md).
+```sh
+cp .env.example .env          # adjust ports/credentials if needed
+just dev                      # docker compose up --build (all 5 services)
+# client http://localhost:8081 · data-service :8082 · keycloak :8089 (admin/admin)
+just seed                     # create sample pages + entities (stack must be up)
+```
+
+Other recipes: `just check` (validate compose), `just validate-models`,
+`just generate-forms`, `just test` (all offline tests + model validation),
+`just logs <service>`, `just dev-clean`. The `wiki12` CLI:
+
+```sh
+node --experimental-strip-types cli/src/index.ts --help
+wiki12 search einstein
+wiki12 page create --field Title="Albert Einstein" --field Body="# ..."
+wiki12 entity create --type person --field FirstName=Till --field LastName=Gartner
+wiki12 migrate person --from 1 --to 2 --dry-run
+```
 
 ## Core concepts
 

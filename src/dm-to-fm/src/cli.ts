@@ -6,10 +6,21 @@
 // generated control resolves to a DM field.
 
 import process from "node:process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { generateFormModel, unresolvedRefs } from "./generate.ts";
 import type { DocumentModel } from "./types.ts";
+
+// An explicit, hand-tuned form model (e.g. Page_FM) opts out of regeneration by
+// carrying header annotation wiki12.formModel="explicit". Don't clobber it.
+function isExplicit(path: string): boolean {
+  try {
+    const fm = JSON.parse(readFileSync(path, "utf8")) as { header?: { annotations?: { name: string; value: string }[] } };
+    return (fm.header?.annotations ?? []).some((a) => a.name === "wiki12.formModel" && a.value === "explicit");
+  } catch {
+    return false;
+  }
+}
 
 function main(argv: string[]): number {
   const args = argv.slice(2);
@@ -42,6 +53,10 @@ function main(argv: string[]): number {
     const dir = outDir ?? dirname(input);
     mkdirSync(dir, { recursive: true });
     const outPath = join(dir, `${fm.header.id}.json`);
+    if (existsSync(outPath) && isExplicit(outPath)) {
+      console.log(`• ${basename(input)} → ${outPath}  (kept explicit form model, not regenerated)`);
+      continue;
+    }
     writeFileSync(outPath, JSON.stringify(fm, null, 2) + "\n");
     const controls = fm.content.screens[0].screenElements
       .reduce((n, s) => n + s.screenElements.reduce((m, g) => m + g.row.length, 0), 0);

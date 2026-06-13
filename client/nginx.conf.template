@@ -1,0 +1,56 @@
+# nginx config template — rendered at container start by envsubst (entrypoint.sh)
+# on ${DATA_SERVICE_UPSTREAM} and ${MODEL_LIFECYCLE_UPSTREAM} ONLY (other $vars are
+# nginx runtime variables and are preserved).
+#
+# Same-origin contract (architecture.md / integration contract):
+#   POST /api/v2/rpc  -> A12 Data Service
+#   /lifecycle/*      -> Node model-lifecycle service, with the /lifecycle prefix STRIPPED
+#   everything else   -> the static SPA (history fallback to index.html)
+#
+# IMPORTANT: upstreams are proxied via *variables* + the Docker embedded DNS
+# resolver (127.0.0.11) so nginx resolves them LAZILY at request time. With a
+# literal `proxy_pass http://data-service/...` nginx resolves at startup and
+# refuses to boot if the backend container isn't up yet — which made the client
+# crash-loop whenever the Data Service was down (QA bug B2). Lazy resolution lets
+# the SPA load regardless; only the proxied API call fails while a backend is down.
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Docker's embedded DNS; re-resolve periodically so restarts are picked up.
+    resolver 127.0.0.11 ipv6=off valid=10s;
+
+    # Data Service JSON-RPC (and any other /api paths the kernel serves, e.g. models).
+    location ~ ^/api/(?<apipath>.*)$ {
+        set $ds_upstream ${DATA_SERVICE_UPSTREAM};
+        proxy_pass $ds_upstream/api/$apipath$is_args$args;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Model-lifecycle service — strip the /lifecycle prefix when proxying.
+    location ~ ^/lifecycle/(?<lcpath>.*)$ {
+        set $lc_upstream ${MODEL_LIFECYCLE_UPSTREAM};
+        proxy_pass $lc_upstream/$lcpath$is_args$args;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Runtime config must never be cached (it is regenerated per container start).
+    location = /config.js {
+        add_header Cache-Control "no-store";
+    }
+
+    # SPA history fallback.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

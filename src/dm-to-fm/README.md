@@ -45,6 +45,18 @@ The field annotated `wiki12.derived="searchText"` (the internal search blob) is
 Override via `GenerateOptions.exclude` if needed. The `Slug` field **is** included
 (shown; making it read-only is a form-config refinement for later).
 
+### Explicit form models opt out
+A hand-tuned form model carrying header annotation
+`wiki12.formModel="explicit"` (e.g. `models/form-models/Page_FM.json`) is **not
+overwritten** by regeneration — the CLI skips it and logs `kept explicit form
+model`. Generated forms have no such annotation, so they are always refreshed.
+
+## Tests
+`npm test` (`node --test --experimental-strip-types test/*.test.ts`, no extra
+deps) covers: a section per group, one control per field, the
+`wiki12.derived=searchText` field is excluded, every `Control.elementRef`
+resolves, and the FM header references the source DM id.
+
 ## Validation
 The CLI fails if any generated `Control.elementRef` doesn't resolve to a DM field
 id. Beyond that, generated forms go through the same SME-feedback loop as the

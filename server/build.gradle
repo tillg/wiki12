@@ -1,0 +1,99 @@
+// wiki12 Java A12 Data Service build (ADR-0005: Gradle is used ONLY here).
+//
+// Shape modeled on the A12 Project Template's server/app build
+// (docs/a12/project_template/project-template-documentation.md and
+//  docs/a12/overall/dev_tutorial_backend_*). It builds a Spring Boot fat jar that
+// embeds the A12 Data Services server plus the wiki12 custom code (slug listener +
+// ResolveBySlug / UnifiedSearch operations).
+//
+// Many coordinate names/versions below are inferred — see the // VERIFY notes and
+// server/README.md. This file is authored, NOT built in this pass (the A12 artifacts
+// are large external pulls and out of scope here).
+
+plugins {
+    // 'java' is required for compilation and for the typed-accessor generation the
+    // template wires in (dev_tutorial_backend_document_manipulation.md §Generation).
+    id 'java'
+    // VERIFY: Spring Boot plugin version. The Data Services server is Spring Boot 3.x
+    // (the docs link Spring Boot 3.5.9). Confirm the exact line the A12 platform pins.
+    id 'org.springframework.boot' version '3.5.9'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'net.mgmtp.wiki12'
+// Stamped from the root VERSION file by the build (ADR-0005 single-version rule);
+// the Dockerfile passes it via -Pversion / WIKI12_VERSION.
+version = project.findProperty('wiki12Version') ?: '0.1.0'
+
+java {
+    // ADR-0005 / findings §6: JDK 21 toolchain for the Data Service.
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    // A12 Community artifacts (public JFrog, no auth) — findings §6 / ADR-0005.
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'a12-community-maven'
+                url = 'https://artifacts.geta12.com/artifactory/a12-community-maven/'
+            }
+        }
+        filter {
+            includeGroupByRegex 'com\\.mgmtp\\.a12.*'
+        }
+    }
+    mavenCentral()
+    // Additional repos the A12 build requires (access_artifacts.md).
+    maven { url = 'https://build.shibboleth.net/nexus/content/repositories/releases/' }
+    maven { url = 'https://repository.jboss.org/nexus/content/groups/public/' }
+}
+
+ext {
+    // VERIFY: the A12 platform version (see gradle.properties a12Version) and that the
+    // coordinates below exist on artifacts.geta12.com at this version.
+    a12Version = project.findProperty('a12Version') ?: '2025.06-ext5'
+}
+
+dependencies {
+    // --- A12 Data Services server (brings the Spring Boot app, JSON-RPC, query, JPA) ---
+    // VERIFY: the exact Data Services server starter/BOM coordinates. The template uses
+    // a Gradle version catalog (a12Libs.versions.*) we don't have here; these names are
+    // the most plausible per the package scopes in the docs. Confirm against the
+    // template's server/app/build.gradle and the artifactory contents.
+    implementation "com.mgmtp.a12.dataservices:dataservices-server:${a12Version}"
+    implementation "com.mgmtp.a12.dataservices:dataservices-query:${a12Version}"
+    implementation "com.mgmtp.a12.dataservices:dataservices-rpc:${a12Version}"
+
+    // --- Kernel: Document API V2 + model facade (DocumentV2, UpdateAction, model search) ---
+    implementation "com.mgmtp.a12.kernel:kernel-md-facade:${a12Version}"
+    implementation "com.mgmtp.a12.kernel:kernel-md-document-v2:${a12Version}"
+
+    // --- JSON-RPC param annotations (@JsonRpcParam) — jsonrpc4j, used by the tutorials ---
+    implementation 'com.github.briandilley.jsonrpc4j:jsonrpc4j:1.6'
+
+    // --- Spring: JDBC (raw JdbcTemplate for the advisory lock) + actuator (health) ---
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // --- PostgreSQL driver (external_postgres profile) ---
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // --- Lombok (the A12 tutorials use @RequiredArgsConstructor / @Slf4j throughout) ---
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // --- Test ---
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+// NOTE: the standalone Slugifier is also covered by the framework-free harness in
+// server/test/SlugifierTest.java (javac + java), which is the one piece actually run
+// in this pass. JUnit tests for the A12-wired classes belong here once the platform
+// deps resolve.
+
+test {
+    useJUnitPlatform()
+}
