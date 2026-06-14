@@ -61,12 +61,18 @@ Extends the stock A12 Data Service (ADR-0002 confirmed GO — custom logic lives
 *inside* the server, no façade):
 
 - **`WikiContentLifecycleListener`** (`@CommonDataServicesEventListener`) — derives
-  the read-only `Slug` and a `searchText` blob inside the write transaction,
-  reading field-level `wiki12.*` annotations (`keyField`, `derived`, `searchable`)
-  off the Data Model.
-- **`SlugDerivationService`** — owns the A12-bound parts: advisory lock, model
-  read, collision query, document mutation. The pure algorithm is isolated in
-  **`Slugifier`** (no A12 deps, unit-tested offline).
+  the whole **read-only content envelope** inside the write transaction: `Slug`, a
+  `searchText` blob, `CreatedOn` (create only), a derived `Title`, and one appended
+  `Changes` entry per write. It reads field-level `wiki12.*` annotations
+  (`keyField`, `derived`, `searchable`, `changeField`) off the Data Model to decide
+  what to derive.
+- **`ContentDerivationService`** (renamed from `SlugDerivationService` when its
+  scope grew from the slug to the whole envelope) — owns the A12-bound parts:
+  advisory lock, model read, collision query, the create/update field diff, and
+  document mutation (including appending a repetition to the `Changes` group). The
+  pure algorithm (slugify, humanize Title, format a change summary) is isolated in
+  **`Slugifier`** (no A12 deps, unit-tested offline). Annotation constants live in
+  **`WikiAnnotations`** (renamed from `SlugAnnotations`).
 - **`ResolveBySlugOperation`** (`@RemoteOperation "ResolveBySlug"`) — try-ID-then-slug
   resolution; param `idOrSlug` (+ optional `type`).
 - **`UnifiedSearchOperation`** (`@RemoteOperation "UnifiedSearch"`) — batched
@@ -94,12 +100,24 @@ HTTP service owning everything that isn't content CRUD:
 
 ### Web client (`client/`, React)
 
-- **Pages**: `LoginPage`, `SearchPage`, `ViewPage`, `EditPage`, `SystemPage`.
+- **Pages**: `LoginPage`, `BrowsePage` (landing `/`, replaced the old
+  submit-button `SearchPage` as home), `ViewPage`, `EditPage`, `SystemPage`.
+- **Browse components** (`src/components/`, reusable content vocabulary):
+  `ContentCard` (A12 `Card` + `Card.ActionArea`, the playing-card summary of any
+  item), `CardGrid` (responsive auto-fill columns), `ContentDetailView` (all
+  fields of an item rendered read-only). `BrowsePage` composes a live keystroke
+  filter + `CardGrid` with a hand-rolled responsive split to a `ContentDetailView`
+  pane (the A12 Managed Master-Detail widget couldn't show a full-width grid with
+  no detail pane) and a full-size toggle.
 - **API layer** (`src/api/`): `rpc` (JSON-RPC + batch), `content` (CRUD/resolve),
-  `search` (client-side fan-out), `lifecycle` + `models`.
+  `search` (client-side fan-out; constraint-free `QUERY` per model for list-all,
+  normalized to card data incl. `createdOn`/`lastChangedOn`, merged + sorted by
+  last-change desc), `lifecycle` + `models`.
 - **Form rendering**: `FormEngineHost` (A12 Form Engine) and a hand-rolled
   `SimpleForm` fallback; Milkdown wrapped as a form-engine widget
   (`widgets/`). Auth in `lib/auth` (token + 401 auto-logout).
+- **Theme**: sans-serif base font via `createTheme` typography over the flat A12
+  theme; meaning is encoded with A12 widgets' semantic props, never hand-set colors.
 
 ### CLI (`cli/`, Node)
 
@@ -125,16 +143,24 @@ stack — QA-LOG B14/B21) and the custom-op server source:
 
 `document` is the **group-keyed** payload `{ <Group>: { ...fields } }` (Group =
 the capitalized type, e.g. `Page`/`Person`); string values are trimmed (the A12
-kernel rejects leading/trailing whitespace). Slug + searchText are derived
-server-side and not part of the write payload.
+kernel rejects leading/trailing whitespace). The full content envelope (`Slug`,
+`searchText`, `CreatedOn`, derived `Title`, `Changes`) is derived server-side and
+not part of the write payload, but is present on every read (`GET_DOCUMENT` /
+`QUERY` / `UnifiedSearch`).
 
 **Model-name mapping:** type → `<Type>_DM` (`page`→`Page_DM`); forms use `_FM`.
 **docRef:** `<Model>/<uuid>`.
 
-## Slug & search derivation (Data Service only, ADR-0001)
+## Envelope derivation (Data Service only, ADR-0001)
 
-- Technical ID assigned on create; Slug + searchText derived in the write
-  transaction by the lifecycle listener.
+- Technical ID assigned on create; the whole envelope (`Slug`, `searchText`,
+  `CreatedOn`, `Title`, `Changes`) is derived in the write transaction by the
+  lifecycle listener. `CreatedOn` is stamped once at create and never updated;
+  `Title` and `Slug` are re-derived from Key Fields on each write; one `Changes`
+  entry is appended per write.
+- The envelope is **enforced on every content model** by the offline validator
+  (`src/model_tools/validate.py`, on the `just test` gate) and the model-lifecycle
+  `POST /models` upload gate (409 if a model omits it).
 - Slugs are `<type>:<name>`, `page` is the default namespace, collisions get a
   sticky `_N` suffix fixed at creation.
 - **No DB unique-index backstop** — uniqueness depends on a transaction-scoped

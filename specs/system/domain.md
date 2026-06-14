@@ -27,6 +27,10 @@ are vocabulary over this one mechanism, not separate implementations (ADR-0004).
 | **Page** | Technical ID + slug `page:<name>` | `Title`, `Slug`, `id` | markdown `Body` |
 | **Entity** | Technical ID + slug `<type>:<name>` | `type`, `Slug`, `id` + type-specific fields | markdown field(s) |
 
+Beyond its type-specific fields, **every** content item also carries a uniform
+**Content Envelope** (see below) — `CreatedOn`, `Title`, `Changes`, plus the
+already-derived `Slug` and `searchText`.
+
 - **Page** — a content item of the built-in **`page`** type: a `Title`, a
   markdown `Body`, a Technical ID, and a derived Slug (`page:albert_einstein`).
   The `page` type **always exists** and is the default Slug namespace.
@@ -57,8 +61,42 @@ and refer to the same item (resolution is **try-ID-then-slug**, ADR-0001).
   fixed at creation. So `slug = f(Key Fields, creation order)` — stored state,
   not a pure recomputation. Users never edit it; a Key-Field edit that changes it
   is surfaced (web + CLI), and the old slug then **404s** (aliases deferred).
-- **Key Fields** — the fields a Slug is derived from (Page: `Title`; person:
-  first + last name; per Entity Type).
+- **Key Fields** — the fields a Slug **and** the derived Title are computed from
+  (Page: `Title`; person: first + last name; per Entity Type). Editing a Key
+  Field can therefore change both the Slug and the Title.
+
+### Content Envelope
+
+The set of standard, **system-maintained** fields every content item carries
+regardless of type — the type-independent surface generic code (listings, cards,
+audit) can rely on without knowing whether it holds a Page or an Entity. Like
+`slug`/`searchText`, none of these is user-authored; the Data Service maintains
+them inside the write transaction (ADR-0001).
+
+| Field | Type | When written | Source |
+|---|---|---|---|
+| **Slug** | StringType | create + re-derived on update | Key Fields (slugified, +suffix) |
+| **searchText** | StringType (multiline) | every write | searchable fields concatenated |
+| **CreatedOn** | DateTimeType | **create only** — immutable | the write clock |
+| **Title** | StringType | every write (derived) or authored (Page) | Key Fields (joined, human-readable) |
+| **Changes** | repeatable Group | append one **Change Entry** every write | the write clock + field diff |
+
+- **CreatedOn** — the instant the item was first persisted; stamped once at
+  create and never changed on update.
+- **Title** — the uniform human display label, the display counterpart of the
+  machine `Slug` (Slug `person:till_gartner` ↔ Title `Till Gartner`). For `page`
+  the Title is an *authored* Key Field (a page's title is source, not derivable);
+  for types whose Key Fields aren't a single title (e.g. `person`) it is a
+  *derived*, read-only field. Either way every type exposes a `Title`.
+- **Changes** — the append-only change log: an ordered list of **Change Entries**,
+  each `{ ChangedOn, Summary }`. One entry is appended per successful write —
+  `created` on create, `updated: <field labels>` on update. It is a summary trail,
+  not full versioning. Realised as a native A12 **repeatable Group** (wiki12's
+  first use of group repeatability).
+
+The envelope is **enforced on every content model** (so a new Entity Type can't
+omit it): the offline validator fails the build, and the model-lifecycle upload
+gate rejects a non-conforming model at runtime (409).
 
 ```mermaid
 flowchart LR
@@ -86,9 +124,11 @@ editor (Milkdown) for writing.
 
 - **Data Model (DM)** — the versioned structural definition of a content type
   (fields, types, constraints). One per type (`Page_DM`, `Person_DM`, …). Carries
-  field-level `wiki12.*` annotations (`keyField`, `derived`, `searchable`) that
-  drive slug/search derivation. The wiki12 content-schema version is an integer
-  in the DM header annotation `wiki12.version`.
+  field-level `wiki12.*` annotations (`keyField`; `derived` ∈ {`slug`,
+  `searchText`, `createdOn`, `title`, `changeLog`}; `searchable`; `changeField` ∈
+  {`datetime`, `summary`} on Change-Entry fields) that drive slug/search/envelope
+  derivation. The wiki12 content-schema version is an integer in the DM header
+  annotation `wiki12.version`.
 - **Form Model (FM)** — the presentation/editing definition for a DM (layout,
   widgets, validation). **Auto-generated from the DM when none is supplied** (by
   wiki12's own tooling — A12 has no headless generator), so every type is always
@@ -179,7 +219,12 @@ flowchart LR
 - **Technical ID** — opaque unique system identifier.
 - **Slug** — read-only, system-derived, namespaced `<type>:<name>` handle; unique
   with sticky `_N` on collision.
-- **Key Fields** — the fields a slug is derived from.
+- **Content Envelope** — the uniform, system-maintained fields every item carries
+  regardless of type: `Slug`, `searchText`, `CreatedOn`, `Title`, `Changes`.
+- **CreatedOn / Title / Changes** — create-once timestamp / derived (or authored)
+  human display label / append-only change log of **Change Entries**
+  (`{ ChangedOn, Summary }`).
+- **Key Fields** — the fields a slug **and** the derived Title are computed from.
 - **Data Model / Form Model** — versioned structure / presentation definition
   (FM auto-generated if absent).
 - **Migration** — TS script (stored as a `Migration` content item) upgrading
