@@ -61,10 +61,17 @@ unit tests run in isolation and need none of them.
 
 ## App surface
 
-- **Search** (`/`) — box + typed results (kind/type chips, slug, snippet); calls
-  the server-side `UnifiedSearch` op.
-- **View** (`/view/:ref`) — markdown rendered with `react-markdown` (+ GFM).
-  `:ref` is an id-or-slug, resolved via `ResolveBySlug`.
+- **Browse** (`/`) — the landing view, built on the A12 **Managed Master-Detail**
+  widget (`@com.mgmtp.a12.widgets/widgets-core/lib/layout/master-detail`). Master
+  pane = a live keystroke filter box + a responsive `CardGrid` of `ContentCard`s
+  for **all** content (recency-sorted, newest-changed first); detail pane =
+  `ContentDetailView` (read-only, all fields) with the widget's native
+  **full-size** toggle. Responsive: a single view at a time on narrow screens.
+  Replaces the old submit-button `SearchPage` (deleted) as home.
+- **View** (`/view/:ref`) — fetches by ref (id-or-slug, resolved via
+  `ResolveBySlug`) and delegates to `ContentDetailView`, so it renders identically
+  to the Browse detail pane (markdown via `react-markdown` + GFM). Keeps an Edit
+  link.
 - **Create / Edit** (`/create?type=…`, `/edit/:ref`) — A12 form engine, non-Redux
   bootstrap (`unmarshallFormModel` + `createEmptyDocument` + `createEngineStore` +
   `<EngineConnected/>`). The slug is shown **read-only**. On a save that changes
@@ -73,6 +80,43 @@ unit tests run in isolation and need none of them.
   **Migrations** list; each row opens a `<textarea>` editing the migration's TS
   `script` source and PUTs it back. **TS source only** — the lifecycle service
   transpiles + sandbox-runs; the client never compiles TS.
+
+### Content cards & detail (reusable)
+
+The Browse view is composed from three reusable components in `src/components/`,
+each depending only on data + callbacks (never on the router or a fetch):
+
+- **`ContentCard.tsx`** — built on the A12 `Card` widget
+  (`@com.mgmtp.a12.widgets/widgets-core/lib/card`). Renders any content item
+  identically (props `{ item, onOpen }`): an optional grey created·changed date
+  line, a bold title, type/kind `Chip`s, and a clamped content preview.
+- **`CardGrid.tsx`** — a thin responsive layout wrapper
+  (`grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr))`); owns layout
+  only, not data.
+- **`ContentDetailView.tsx`** — renders a whole item **read-only**: title/slug/type
+  header, markdown Body/Description, a humanized label→value list of the remaining
+  scalar fields, CreatedOn, and the Changes log newest-first. Reused by both
+  `BrowsePage`'s detail pane and `ViewPage`.
+
+### Read model (`api/search.ts`)
+
+Alongside `unifiedSearch`, the module exposes the browse read path:
+
+- **`listAllContent()`** — a constraint-free (list-all) `QUERY` fan-out per content
+  model, recency-sorted; runs once on mount and is filtered in memory per keystroke.
+- **`ContentCardData`** — `SearchHit` plus optional `createdOn` / `lastChangedOn`.
+- Pure, unit-tested helpers: `sortByRecency`, `filterCards`, `formatCardDate`,
+  `lastChangedOf`.
+
+**List cap (no silent caps):** the gallery lists up to **100 items per content
+model**; the UI states this. Cross-model paging is out of scope.
+
+### Sans-serif global
+
+`App.tsx` layers a `createGlobalStyle` sans-serif rule over the A12 theme. The
+flat theme is already sans-serif for widget text; `createTheme`'s typography token
+isn't in the theme schema, so the global is the documented safe path. The sidebar
+item is now **Browse** (was "Search").
 
 ### Markdown editor
 
@@ -91,9 +135,11 @@ markdown body (annotation `wiki12.markdownBody`, or a known body field name).
 src/
   api/        rpc.ts (JSON-RPC, batch), content.ts (CRUD), models.ts (model fetch),
               search.ts (UnifiedSearch + merge), lifecycle.ts (migrations + form-model)
-  components/ FormEngineHost.tsx (non-Redux bootstrap), Ui.tsx (chip/banner/dialog)
+  components/ FormEngineHost.tsx (non-Redux bootstrap), Ui.tsx (chip/banner/dialog),
+              ContentCard.tsx (on A12 Card), CardGrid.tsx, ContentDetailView.tsx
   widgets/    MilkdownEditor.tsx, markdownWidgetMap.tsx
-  pages/      SearchPage, ViewPage, EditPage, SystemPage
+  pages/      BrowsePage (landing '/', A12 Managed Master-Detail), ViewPage,
+              EditPage, SystemPage
   lib/        runtimeConfig.ts, modelFields.ts
   *.test.ts   Vitest unit tests (rpc, search, modelFields)
 ```
@@ -105,7 +151,8 @@ src/
 - `src/api/rpc.test.ts` — JSON-RPC request/batch builders + batch-response
   realignment by id (and per-item error handling).
 - `src/api/search.test.ts` — search-result normalization, merge/de-dup across
-  per-model lists, and tolerant envelope coercion (`toLists`).
+  per-model lists, tolerant envelope coercion (`toLists`), plus the browse read
+  model: `sortByRecency`, `filterCards`, `formatCardDate`, `lastChangedOf`.
 - `src/lib/modelFields.test.ts` — markdown-body control detection.
 
 A standalone `vitest.config.ts` (no Vite React plugin) is used so the tests run
@@ -152,4 +199,9 @@ for `VERIFY` to find them in context.
 8. **A12 package versions**. Pinned to `^38.0.0` per the Widgets Quick Start
    (`widgets-core ^38`); confirm the form-engine / kernel / utils versions line up
    on the registry.
+9. **A12 Managed Master-Detail runtime behavior** (`pages/BrowsePage.tsx`). That
+   the detail's full-size toggle expands it to the whole viewport and the
+   responsive breakpoint collapses to a single view on narrow screens — confirmed
+   working in a **manual browser check against the live stack**; left as a VERIFY
+   pending an automated regression for the widget's runtime behavior.
 ```

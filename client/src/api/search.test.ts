@@ -1,5 +1,91 @@
 import { describe, expect, it } from "vitest";
-import { mergeResults, normalizeHit, toLists, type RawHit } from "./search";
+import {
+  dedupeCards,
+  filterCards,
+  formatCardDate,
+  lastChangedOf,
+  mergeResults,
+  normalizeHit,
+  sortByRecency,
+  toLists,
+  type ContentCardData,
+  type RawHit,
+} from "./search";
+
+function cd(over: Partial<ContentCardData> = {}): ContentCardData {
+  return { kind: "entity", type: "person", id: "M/1", slug: "person:x", title: "X", snippet: "", ...over };
+}
+
+describe("formatCardDate", () => {
+  it("renders an ISO instant as YYYY-MM-DD", () => {
+    expect(formatCardDate("2026-06-14T09:30:00Z")).toBe("2026-06-14");
+  });
+  it("is empty for undefined/empty", () => {
+    expect(formatCardDate(undefined)).toBe("");
+    expect(formatCardDate("")).toBe("");
+  });
+});
+
+describe("lastChangedOf", () => {
+  it("takes the newest ChangedOn across the Changes group", () => {
+    const f = {
+      CreatedOn: "2026-06-01T00:00:00Z",
+      Changes: [
+        { ChangedOn: "2026-06-01T00:00:00Z", Summary: "created" },
+        { ChangedOn: "2026-06-09T12:00:00Z", Summary: "updated" },
+        { ChangedOn: "2026-06-05T08:00:00Z", Summary: "updated" },
+      ],
+    };
+    expect(lastChangedOf(f, "2026-06-01T00:00:00Z")).toBe("2026-06-09T12:00:00Z");
+  });
+  it("falls back to CreatedOn when there is no Changes log", () => {
+    expect(lastChangedOf({}, "2026-06-01T00:00:00Z")).toBe("2026-06-01T00:00:00Z");
+  });
+  it("is undefined when neither is present", () => {
+    expect(lastChangedOf({})).toBeUndefined();
+  });
+});
+
+describe("sortByRecency", () => {
+  it("orders newest-changed first, missing timestamps last", () => {
+    const cards = [
+      cd({ slug: "a", lastChangedOn: "2026-01-01T00:00:00Z" }),
+      cd({ slug: "b" }),
+      cd({ slug: "c", lastChangedOn: "2026-06-01T00:00:00Z" }),
+    ];
+    expect(sortByRecency(cards).map((c) => c.slug)).toEqual(["c", "a", "b"]);
+  });
+  it("breaks ties deterministically by title then slug, and does not mutate input", () => {
+    const cards = [cd({ slug: "z", title: "Beta" }), cd({ slug: "a", title: "Alpha" })];
+    const before = cards.map((c) => c.slug);
+    expect(sortByRecency(cards).map((c) => c.title)).toEqual(["Alpha", "Beta"]);
+    expect(cards.map((c) => c.slug)).toEqual(before);
+  });
+});
+
+describe("filterCards", () => {
+  const cards = [
+    cd({ slug: "a", title: "Albert Einstein", snippet: "physicist" }),
+    cd({ slug: "b", title: "Berlin", snippet: "capital city" }),
+  ];
+  it("matches case-insensitively over title and snippet", () => {
+    expect(filterCards(cards, "einstein").map((c) => c.slug)).toEqual(["a"]);
+    expect(filterCards(cards, "CITY").map((c) => c.slug)).toEqual(["b"]);
+  });
+  it("returns all for an empty/blank query", () => {
+    expect(filterCards(cards, "")).toHaveLength(2);
+    expect(filterCards(cards, "   ")).toHaveLength(2);
+  });
+});
+
+describe("dedupeCards", () => {
+  it("removes duplicates by slug, first wins, order preserved", () => {
+    const cards = [cd({ slug: "a", title: "first" }), cd({ slug: "b" }), cd({ slug: "a", title: "dup" })];
+    const out = dedupeCards(cards);
+    expect(out.map((c) => c.slug)).toEqual(["a", "b"]);
+    expect(out[0].title).toBe("first");
+  });
+});
 
 describe("normalizeHit", () => {
   it("infers kind 'page' for the page type and 'entity' otherwise", () => {

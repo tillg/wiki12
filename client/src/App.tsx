@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
-import { ThemeProvider } from "styled-components";
+import { ThemeProvider, createGlobalStyle } from "styled-components";
 import { BrowserRouter, Link, Route, Routes, useNavigate } from "react-router-dom";
 
 import { GlobalStyles } from "@com.mgmtp.a12.widgets/widgets-core/lib/theme/base";
@@ -10,17 +10,26 @@ import { ApplicationFrame } from "@com.mgmtp.a12.widgets/widgets-core/lib/layout
 import { ApplicationHeader } from "@com.mgmtp.a12.widgets/widgets-core/lib/application-header";
 import { FlyoutMenu } from "@com.mgmtp.a12.widgets/widgets-core/lib/menu";
 
-import { SearchPage } from "./pages/SearchPage";
+import { BrowsePage } from "./pages/BrowsePage";
 import { ViewPage } from "./pages/ViewPage";
 import { EditPage } from "./pages/EditPage";
 import { SystemPage } from "./pages/SystemPage";
 import { LoginPage } from "./pages/LoginPage";
 import { getUser, isAuthenticated, logout, onAuthChange } from "./lib/auth.ts";
 
+// Sans-serif everywhere. The A12 flat theme is already sans-serif for widget-rendered
+// text; this layered global covers our own inline-styled components (cards, detail,
+// Ui) so nothing falls back to the browser serif default. (createTheme's typography
+// token isn't in the theme schema, so this global is the documented safe path.)
+const SANS = `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+const SansGlobal = createGlobalStyle`
+  body, button, input, textarea, select { font-family: ${SANS}; }
+`;
+
 function Sidebar(): ReactElement {
   const navigate = useNavigate();
   const items = [
-    { label: "Search", onClick: () => navigate("/") },
+    { label: "Browse", onClick: () => navigate("/") },
     { label: "New page", onClick: () => navigate("/create?type=Page") },
     { label: "System", onClick: () => navigate("/system") },
   ];
@@ -51,7 +60,7 @@ function Shell(): ReactElement {
       content={
         <div style={{ padding: "1rem", maxWidth: "60rem" }}>
           <Routes>
-            <Route path="/" element={<SearchPage />} />
+            <Route path="/" element={<BrowsePage />} />
             <Route path="/view/:ref" element={<ViewPage />} />
             <Route path="/edit/:ref" element={<EditPage />} />
             <Route path="/create" element={<EditPage />} />
@@ -69,6 +78,7 @@ export default function App(): ReactElement {
   return (
     <ThemeProvider theme={flatTheme}>
       <GlobalStyles />
+      <SansGlobal />
       {authed ? (
         <BrowserRouter>
           <Shell />
