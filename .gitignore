@@ -18,6 +18,7 @@ npm-debug.log*
 # Java / build
 target/
 *.class
+.gradle/
 
 # OS / editor
 .DS_Store

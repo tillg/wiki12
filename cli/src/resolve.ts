@@ -43,8 +43,13 @@ export function docRef(type: string, id: string): string {
 
 // Resolve a user-supplied ref (ID or slug) to a docRef the Data Service reads.
 //   - ID  -> "<ModelName>/<id>" directly (type known from the command).
-//   - slug -> ResolveBySlug({ ref }) -> { docRef } (or { type, id }).
-// VERIFY: ResolveBySlug return shape — assumed { docRef } or { type, id, slug }.
+//   - slug -> ResolveBySlug({ idOrSlug, type }) -> resolved document/ref.
+// The server op's param is `idOrSlug` (ResolveBySlugOperation @JsonRpcParam) with
+// an optional `type` to scope the slug query; we pass both.
+// VERIFY: ResolveBySlug *return* shape. The server returns the resolved A12
+// document (Optional<DataServicesDocument>) and its mapping is still stubbed
+// (server extractDocRef → null), so this path is not yet end-to-end validated.
+// We accept the documented handles ({ docRef } or { type, id }) defensively.
 export async function resolveDocRef(
   rpc: RpcClient,
   type: string,
@@ -56,7 +61,7 @@ export async function resolveDocRef(
   const slug = normalizeSlug(ref);
   const resolved = await rpc.call<{ docRef?: string; type?: string; id?: string }>(
     "ResolveBySlug",
-    { ref: slug },
+    { idOrSlug: slug, type: modelName(type) },
   );
   if (resolved.docRef) return resolved.docRef;
   if (resolved.type && resolved.id) return docRef(resolved.type, resolved.id);

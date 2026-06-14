@@ -28,3 +28,39 @@ test("a value flag with no following value becomes a switch", () => {
   assert.equal(p.flags.type, undefined);
   assert.ok(p.switches.has("type"));
 });
+
+test("empty argv yields empty results", () => {
+  const p = parseArgs([]);
+  assert.deepEqual(p.positionals, []);
+  assert.deepEqual(p.flags, {});
+  assert.equal(p.switches.size, 0);
+  assert.equal(p.help, false);
+});
+
+test("a value flag immediately followed by another flag becomes a switch", () => {
+  // --type has no value because the next token starts with "--".
+  const p = parseArgs(["--type", "--kind", "page"]);
+  assert.ok(p.switches.has("type"));
+  assert.equal(p.flags.kind, "page");
+});
+
+test("a repeated value flag keeps the last value", () => {
+  const p = parseArgs(["--type", "page", "--type", "person"]);
+  assert.equal(p.flags.type, "person");
+});
+
+test("-h anywhere sets help while still parsing the rest", () => {
+  const p = parseArgs(["read", "page:x", "-h", "--type", "person"]);
+  assert.equal(p.help, true);
+  assert.deepEqual(p.positionals, ["read", "page:x"]);
+  assert.equal(p.flags.type, "person");
+});
+
+test("a flag is only treated as boolean when declared in booleanFlags", () => {
+  // Without declaring "dry-run", it would consume the next token as its value.
+  const p = parseArgs(["--dry-run", "person"]);
+  assert.equal(p.flags["dry-run"], "person");
+  const q = parseArgs(["--dry-run", "person"], ["dry-run"]);
+  assert.ok(q.switches.has("dry-run"));
+  assert.deepEqual(q.positionals, ["person"]);
+});

@@ -7,7 +7,7 @@ import {
   normalizeSlug,
   resolveDocRef,
 } from "../src/resolve.ts";
-import { modelName } from "../src/model-name.ts";
+import { modelName, rootGroup } from "../src/model-name.ts";
 import { RpcClient } from "../src/rpc.ts";
 import { mockRpc } from "./helpers.ts";
 
@@ -54,7 +54,11 @@ test("resolveDocRef: a slug dispatches ResolveBySlug with page default", async (
   assert.equal(ref, "Page_DM/pg_01HXYZ");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].method, "ResolveBySlug");
-  assert.deepEqual(calls[0].params, { ref: "page:albert_einstein" });
+  // Server op param is `idOrSlug` (+ a model `type` to scope the slug query).
+  assert.deepEqual(calls[0].params, {
+    idOrSlug: "page:albert_einstein",
+    type: "Page_DM",
+  });
 });
 
 test("resolveDocRef: ResolveBySlug returning {type,id} is composed", async () => {
@@ -64,4 +68,19 @@ test("resolveDocRef: ResolveBySlug returning {type,id} is composed", async () =>
   const rpc = new RpcClient(transport);
   const ref = await resolveDocRef(rpc, "person", "person:till_gartner");
   assert.equal(ref, "Person_DM/en_9");
+});
+
+test("resolveDocRef: throws when ResolveBySlug yields neither docRef nor {type,id}", async () => {
+  const { transport } = mockRpc({ ResolveBySlug: {} });
+  const rpc = new RpcClient(transport);
+  await assert.rejects(
+    () => resolveDocRef(rpc, "page", "missing_slug"),
+    /could not resolve slug "page:missing_slug"/,
+  );
+});
+
+test("rootGroup is the capitalized type (group key for the document payload)", () => {
+  assert.equal(rootGroup("page"), "Page");
+  assert.equal(rootGroup("person"), "Person");
+  assert.equal(rootGroup("location"), "Location");
 });

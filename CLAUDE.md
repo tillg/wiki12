@@ -73,20 +73,28 @@ work uses each dir's own npm/gradle scripts.
 
 ```sh
 # Stack (Docker Compose, 5 services)
-just dev            # up --build, follow logs   | just up (detached)
+just build          # bump patch + build all images       | just bump (just the version bump)
+just dev            # bump patch + up --build, follow logs | just up (detached)
 just dev-stop       # down (keep volumes)        | just dev-clean (down --rmi local --volumes)
 just logs <svc>     # tail one service           | just check (validate compose config)
 just seed           # sample pages + entities (needs a running stack)
+
+# Versioning: every build bumps VERSION's PATCH (3rd) number deterministically via
+# scripts/bump-version.sh (NOT manually / AI-edited). build, dev, up all run `bump`
+# first, then stamp the bumped VERSION into all images as WIKI12_VERSION. The justfile's
+# parse-time `export WIKI12_VERSION` is stale within a bumping recipe, so build recipes
+# re-read VERSION inline. Bump MAJOR/MINOR by editing VERSION directly. (ADR-0005)
 
 # Models
 just validate-models   # python3 src/model_tools/validate.py on document-models/*.json
 just generate-forms    # regenerate default form models from *_DM.json
 
 # Tests — `just test` runs every OFFLINE test + model validation:
-just test              # = validate-models + test-forms + test-cli + test-lifecycle
+just test              # = validate-models + test-version + test-forms + test-cli + test-lifecycle
 just test-cli          # cd cli && npm test
 just test-lifecycle    # cd model-lifecycle && npm test
 just test-forms        # cd src/dm-to-fm && npm test
+just test-version      # sh scripts/bump-version.test.sh (deterministic patch bump)
 ```
 
 Component-level (run a single test / typecheck):
@@ -198,6 +206,10 @@ in DM header annotation `wiki12.version`, what migrations step between).
 After building or modifying the web client, start the dev server, open it in the
 browser, and verify it renders before declaring done. Save all browser-agent
 artifacts (screenshots, snapshots, logs) under `tmp/` (already gitignored).
+
+**Playwright screenshots must always be written to `tmp/`** (which is gitignored)
+— never to the repo root or any tracked path. Verify `tmp/` is in `.gitignore`
+before capturing.
 
 ## Skills
 

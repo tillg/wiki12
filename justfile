@@ -3,21 +3,31 @@
 
 set dotenv-load := true
 
-# stamp every image with the single stack version (root VERSION file)
+# stamp every image with the single stack version (root VERSION file).
+# NOTE: this is read at parse time, BEFORE `bump` runs — build recipes therefore
+# re-read VERSION inline after bumping so the freshly-bumped value is stamped.
 export WIKI12_VERSION := `cat VERSION`
 
 default:
     @just --list
 
+# bump the PATCH (3rd) number of VERSION deterministically (scripts/bump-version.sh)
+bump:
+    @scripts/bump-version.sh
+
 # --- stack lifecycle -------------------------------------------------------
 
+# build all images, stamping a freshly-bumped patch version
+build: bump
+    WIKI12_VERSION="$(cat VERSION)" docker compose build
+
 # start the full stack (build if needed) and follow logs
-dev:
-    docker compose up --build
+dev: bump
+    WIKI12_VERSION="$(cat VERSION)" docker compose up --build
 
 # start detached
-up:
-    docker compose up --build -d
+up: bump
+    WIKI12_VERSION="$(cat VERSION)" docker compose up --build -d
 
 # stop the stack (keep volumes/images)
 dev-stop:
@@ -56,8 +66,12 @@ test-lifecycle:
 test-forms:
     cd src/dm-to-fm && npm install && npm test
 
+# the deterministic version-bump script
+test-version:
+    sh scripts/bump-version.test.sh
+
 # run every offline test + model validation
-test: validate-models test-forms test-cli test-lifecycle
+test: validate-models test-version test-forms test-cli test-lifecycle
 
 # --- content ---------------------------------------------------------------
 

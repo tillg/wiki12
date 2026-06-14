@@ -71,16 +71,16 @@ wiki12 search "einstein" --kind entity --type person
 
 # Pages (sugar for: entity --type page)
 wiki12 page list
-wiki12 page create --field title="Albert Einstein" --field body="# Physicist"
+wiki12 page create --field Title="Albert Einstein" --field Body="# Physicist"
 wiki12 page read  albert_einstein           # by slug (bare name => page:)
 wiki12 page read  pg_01HXYZ                  # by Technical ID
-wiki12 page update albert_einstein --field title="A. Einstein"
+wiki12 page update albert_einstein --field Title="A. Einstein"
 wiki12 page delete page:albert_einstein
 wiki12 page search einstein
 
 # Entities (any user-defined type)
 wiki12 entity --type person list
-wiki12 entity --type person create --field firstName=Till --field lastName=Gartner
+wiki12 entity --type person create --field FirstName=Till --field LastName=Gartner
 wiki12 entity --type person read person:till_gartner
 
 # Data models (model-lifecycle service). A version bump uploads the model AND
@@ -106,13 +106,18 @@ body `{"jsonrpc":"2.0","id":N,"method":"<OP>","params":{...}}`:
 
 | Purpose | Op | Params (this CLI sends) |
 |---|---|---|
-| create | `ADD_DOCUMENT` | `{ model, fields }` |
-| read by ref | `GET_DOCUMENT` | `{ docRef: "<Model>/<uuid>" }` |
-| list / read-by-field | `QUERY` | `{ targetDocumentModel }` |
-| update | `UPDATE_DOCUMENT` | `{ docRef, fields }` |
+| create | `ADD_DOCUMENT` | `{ documentModelName, locale, document }` → `{ docRef }` |
+| read by ref | `GET_DOCUMENT` | `{ docRef: "<Model>/<uuid>" }` → `{ document }` |
+| list | `QUERY` | `{ query: { targetDocumentModel, projectionName, paging } }` |
+| update | `MODIFY_DOCUMENT` | `{ docRef, document }` (returns void) |
 | delete | `DELETE_DOCUMENT` | `{ docRef }` |
-| resolve a slug | `ResolveBySlug` (custom) | `{ ref }` → `{ docRef }` or `{ type, id }` |
+| resolve a slug | `ResolveBySlug` (custom) | `{ idOrSlug, type }` → resolved document/ref |
 | unified search | `UnifiedSearch` (custom) | `{ query, kind?, type? }` → `[{ kind, type, id, slug, title, snippet }]` |
+
+`document` is the **group-keyed** payload `{ <Group>: { ...fields } }` (Group = the
+capitalized type, e.g. `Page`/`Person`); the CLI wraps the flat `--field` pairs
+into it. `MODIFY_DOCUMENT` accepts **only** `{ docRef, document }` — adding
+`documentModelName`/`locale` is rejected (QA-LOG B21).
 
 **Model-lifecycle service** — HTTP at `{WIKI12_MODEL_LIFECYCLE_URL}`:
 
@@ -128,10 +133,10 @@ body `{"jsonrpc":"2.0","id":N,"method":"<OP>","params":{...}}`:
 
 ## `// VERIFY` assumptions
 
-These are this CLI's assumptions about exact A12 op/route shapes, marked
-`// VERIFY` in the source. They build the requests the contract above implies,
-but the precise param/route names were inferred and should be confirmed against
-the running Data Service + model-lifecycle service:
+The content-op shapes (op names + param keys) were **confirmed** against the
+validated web client (`client/src/api/content.ts` + `search.ts`, run against a
+live stack — QA-LOG B14/B21) and the custom-op server source, and updated in the
+contract table above. What remains open, marked `// VERIFY` in the source:
 
 - **`resolve.ts`** — the **Technical ID grammar**. We treat a ref as an ID when
   it is *not* slug-shaped (slug = `(<ns>:)?[a-z0-9_]+`), i.e. it contains an
@@ -139,18 +144,22 @@ the running Data Service + model-lifecycle service:
   grammar is reserved so the two never collide" but does not pin the exact
   prefix/charset. A lowercase, underscore-only token (e.g. `pg_1`) is currently
   read as a **slug**, not an ID.
-- **`resolve.ts`** — `ResolveBySlug` **return shape**: assumed `{ docRef }` or
-  `{ type, id, slug }`.
-- **`entity.ts`** — **op names for update/delete**: assumed `UPDATE_DOCUMENT` /
-  `DELETE_DOCUMENT`. `ADD_DOCUMENT` / `GET_DOCUMENT` / `QUERY` are documented
-  (findings §3).
-- **`entity.ts`** — create/update **param keys**: assumed `{ model, fields }`
-  for create and `{ docRef, fields }` for update; `QUERY` uses
-  `{ targetDocumentModel }`. (Findings §3 shows `targetDocumentModel`; the exact
-  create payload key — `fields` vs `document` — is assumed.)
-- **`entity.ts`** — the **slug-change** signal on a write: assumed the write
-  result carries `slugChange: { from, to }`. The contract says the Data Service
-  "returns old→new on such writes"; the exact field name is assumed.
+- **`resolve.ts`** — `ResolveBySlug` **return shape**. The param is now
+  `idOrSlug` (+ `type`) per the server `@JsonRpcParam`, but the server returns
+  the resolved A12 document and its mapping is still **stubbed**
+  (`extractDocRef` → null), so this path is not yet validated end-to-end. We
+  accept `{ docRef }` or `{ type, id }` defensively.
+- **`entity.ts`** — the **QUERY result envelope** (`PagedResultSet`) and the
+  per-row `{ slug, id }` projection. The request spec is confirmed; the response
+  is coerced defensively (bare array / `{ content }` / `{ results }`).
+- **`entity.ts`** — the **`document` root group** = capitalized type. Holds for
+  every sample DM (`Page`/`Person`/`Film`/`Location`); a DM whose root group
+  differs from its type would need its group read from the model.
+- **`entity.ts`** — the **slug-change-on-write** signal. `MODIFY_DOCUMENT`
+  returns void and slug re-derivation is owned by the server-side lifecycle
+  listener (Tier-2), so an old→new slug change surfaces on the next read, not
+  from the write. `slugChangeMessage` is kept as a pure helper for when that
+  lands.
 - **`model.ts`** — `/models` **read route** (`GET /models/:type`) and the
   **upload payload** (`{ type, model, migration?, toVersion? }`) are assumed.
 - **`form.ts`** — **list route** `GET /form-model` is assumed (the contract
@@ -165,7 +174,11 @@ the running Data Service + model-lifecycle service:
 npm test   # node --test --experimental-strip-types test/*.test.ts
 ```
 
-Tests inject a **mock transport** (no live server) and cover: arg/flag parsing
-incl. `-h`; JSON-RPC request building for create/read/update/delete/search;
-id-vs-slug resolution dispatch; `page` sugar → `entity --type page`; and the
-slug-change message formatting.
+Tests inject a **mock transport** (no live server) and cover every command and
+subcommand plus corner cases: arg/flag parsing (incl. `-h`, repeated flags,
+value-flag-as-switch); the full content-op contract (group-keyed `ADD_DOCUMENT`,
+`MODIFY_DOCUMENT`, nested `QUERY`, `docRef` extraction, `ResolveBySlug idOrSlug`);
+`--field` collection edge cases (empty value, `=` in value, trailing `--field`,
+last-wins); id-vs-slug resolution dispatch; model/form/migrate routes and the
+migrate exit code (failures → exit 1); usage errors (exit 2); and search hit
+formatting. `page` sugar is verified to route identically to `entity --type page`.

@@ -1,24 +1,28 @@
 // `wiki12 entity` — content CRUD over the Data Service. `wiki12 page` is sugar
 // for `entity --type page`.
 //
-// Data Service ops (findings-a12.md §3, integration contract):
-//   ADD_DOCUMENT  create        params { model, fields }
-//   GET_DOCUMENT  read by ref   params { docRef }
-//   QUERY         list/search   params { targetDocumentModel, query?, fields? }
-//   <modify op>   update        params { docRef, fields }
-//   <delete op>   delete        params { docRef }
-//   UnifiedSearch (custom)      params { query, kind?, type? }
+// Data Service ops. Shapes confirmed against the validated web client
+// (client/src/api/content.ts + search.ts, run against a live stack — QA-LOG
+// B14/B21) and the custom-op server source (server/.../operation/*.java):
+//   ADD_DOCUMENT     create   params { documentModelName, locale, document }
+//                             -> result { docRef } (slug is server-derived, not returned)
+//   GET_DOCUMENT     read     params { docRef } -> { document }
+//   QUERY            list     params { query: { targetDocumentModel, projectionName, paging } }
+//   MODIFY_DOCUMENT  update   params { docRef, document }  (NO documentModelName/locale — B21)
+//                             -> void
+//   DELETE_DOCUMENT  delete   params { docRef }
+//   UnifiedSearch (custom)    params { query, kind?, type? } -> [{ kind,type,id,slug,title,snippet }]
 //
-// VERIFY: exact op names for modify/delete and exact param keys
-// (model vs targetDocumentModel, fields vs document) — assumed below.
+// `document` is a group-keyed payload { <Group>: { ...fields } } (rootGroup());
+// the flat --field pairs are wrapped before the write.
 
 import { parseArgs } from "../args.ts";
-import { collectFields, formatHit, slugChangeMessage } from "../format.ts";
+import { collectFields, formatHit } from "../format.ts";
 import { HELP } from "../help.ts";
-import { modelName } from "../model-name.ts";
+import { modelName, rootGroup } from "../model-name.ts";
 import { resolveDocRef } from "../resolve.ts";
 import { RpcClient } from "../rpc.ts";
-import type { ContentItem, SearchHit, WriteResult } from "../types.ts";
+import type { ContentItem, SearchHit } from "../types.ts";
 
 export interface CmdContext {
   rpc: RpcClient;
@@ -26,13 +30,50 @@ export interface CmdContext {
   err: (msg: string) => void;
 }
 
-// VERIFY: op names for update/delete — assumed UPDATE_DOCUMENT / DELETE_DOCUMENT.
 export const OP_CREATE = "ADD_DOCUMENT";
 export const OP_READ = "GET_DOCUMENT";
 export const OP_QUERY = "QUERY";
-export const OP_UPDATE = "UPDATE_DOCUMENT";
+export const OP_MODIFY = "MODIFY_DOCUMENT";
 export const OP_DELETE = "DELETE_DOCUMENT";
 export const OP_UNIFIED_SEARCH = "UnifiedSearch";
+
+// The A12 document locale; the web client hardcodes "en" on ADD_DOCUMENT.
+const LOCALE = "en";
+
+// Wrap flat --field pairs into the group-keyed document the Data Service expects.
+function toDocument(type: string, fields: Record<string, string>): Record<string, unknown> {
+  return { [rootGroup(type)]: fields };
+}
+
+// ADD_DOCUMENT returns the new document's reference, either as a bare
+// "<Model>/<uuid>" string or as { docRef: "..." }. Extract the id (the part
+// after "/"). Slugs are server-derived and not returned by the write.
+function idFromDocRef(dref: string): string {
+  const i = dref.indexOf("/");
+  return i >= 0 ? dref.slice(i + 1) : dref;
+}
+
+function docRefOf(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object" && "docRef" in result) {
+    return String((result as { docRef: unknown }).docRef ?? "");
+  }
+  return "";
+}
+
+// QUERY returns a PagedResultSet. Coerce the plausible envelopes (bare array,
+// { content }, { results }) into a flat row list for `list` output.
+// VERIFY: PagedResultSet envelope key (`content`) and the per-row {slug,id}
+// projection shape against a live QUERY — handled defensively until confirmed.
+function queryRows(rs: unknown): Array<{ slug?: string; id?: string }> {
+  if (Array.isArray(rs)) return rs as Array<{ slug?: string; id?: string }>;
+  if (rs && typeof rs === "object") {
+    const o = rs as { content?: unknown[]; results?: unknown[] };
+    if (Array.isArray(o.content)) return o.content as Array<{ slug?: string; id?: string }>;
+    if (Array.isArray(o.results)) return o.results as Array<{ slug?: string; id?: string }>;
+  }
+  return [];
+}
 
 // Run an entity subcommand. `type` is resolved by the caller (entity reads
 // --type; page passes "page").
@@ -49,17 +90,28 @@ export async function runEntity(
 
   switch (sub) {
     case "list": {
-      const items = await rpc.call<ContentItem[]>(OP_QUERY, {
-        targetDocumentModel: model,
+      // QUERY is a no-defaults protocol: the client must supply the full spec
+      // (projection + paging), and results come back as a PagedResultSet.
+      const rs = await rpc.call<unknown>(OP_QUERY, {
+        query: {
+          targetDocumentModel: model,
+          projectionName: "document",
+          paging: { pageSize: 100, pageNumber: 0 },
+        },
       });
-      for (const it of items) out(`${it.slug}\t${it.id}`);
+      for (const it of queryRows(rs)) out(`${it.slug ?? ""}\t${it.id ?? ""}`);
       return 0;
     }
 
     case "create": {
       const fields = collectFields(rest);
-      const result = await rpc.call<WriteResult>(OP_CREATE, { model, fields });
-      out(`Created ${result.slug}  (id ${result.id})`);
+      const result = await rpc.call<unknown>(OP_CREATE, {
+        documentModelName: model,
+        locale: LOCALE,
+        document: toDocument(type, fields),
+      });
+      const id = idFromDocRef(docRefOf(result));
+      out(`Created ${model}/${id}`);
       return 0;
     }
 
@@ -75,10 +127,13 @@ export async function runEntity(
       if (!ref) return missingRef(err, type);
       const fields = collectFields(rest);
       const docRef = await resolveDocRef(rpc, type, ref);
-      const result = await rpc.call<WriteResult>(OP_UPDATE, { docRef, fields });
-      out(`Updated ${result.slug}  (id ${result.id})`);
-      const msg = slugChangeMessage(result);
-      if (msg) out(msg);
+      // MODIFY_DOCUMENT returns void; it accepts ONLY { docRef, document }
+      // (adding documentModelName/locale is rejected — QA-LOG B21).
+      await rpc.call(OP_MODIFY, { docRef, document: toDocument(type, fields) });
+      out(`Updated ${docRef}`);
+      // Slug re-derivation on a key-field change is owned by the server-side
+      // lifecycle listener; the write itself returns nothing, so any old->new
+      // slug notification surfaces on the next read, not here.
       return 0;
     }
 

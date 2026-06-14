@@ -58,9 +58,15 @@ just dev                      # docker compose up --build (all 5 services)
 just seed                     # create sample pages + entities (stack must be up)
 ```
 
+Every build bumps the **patch** (3rd) number of the stack `VERSION` and stamps it
+into all images as `WIKI12_VERSION` — `just build`, `just dev`, and `just up` each
+run `just bump` first (deterministic, `scripts/bump-version.sh`; edit `VERSION`
+directly for major/minor bumps).
+
 Other recipes: `just check` (validate compose), `just validate-models`,
 `just generate-forms`, `just test` (all offline tests + model validation),
-`just logs <service>`, `just dev-clean`. The `wiki12` CLI:
+`just bump` (patch-bump `VERSION`), `just logs <service>`, `just dev-clean`. The
+`wiki12` CLI:
 
 ```sh
 node --experimental-strip-types cli/src/index.ts --help

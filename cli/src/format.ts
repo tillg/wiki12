@@ -13,7 +13,9 @@ export function collectFields(argv: string[]): Record<string, string> {
       if (kv === undefined) continue;
       const eq = kv.indexOf("=");
       if (eq === -1) throw new Error(`--field expects key=value, got "${kv}"`);
-      fields[kv.slice(0, eq)] = kv.slice(eq + 1);
+      // Trim leading/trailing whitespace: the A12 kernel's formal check rejects it
+      // (fuehrendesBlank / nachfolgendesBlank), rolling back ADD/MODIFY_DOCUMENT.
+      fields[kv.slice(0, eq)] = kv.slice(eq + 1).trim();
     }
   }
   return fields;

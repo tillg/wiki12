@@ -5,8 +5,8 @@
 //   update  -> MODIFY_DOCUMENT (// VERIFY exact op name)
 //   delete  -> DELETE_DOCUMENT (// VERIFY exact op name)
 //
-// Identity resolution is server-side: ResolveBySlug {ref} maps an id-or-slug to a
-// concrete docRef (architecture.md §3, "try-ID-then-slug"). Slugs are read-only
+// Identity resolution is server-side: ResolveBySlug {idOrSlug} maps an id-or-slug
+// to a concrete docRef (architecture.md §3, "try-ID-then-slug"). Slugs are read-only
 // and system-derived; a write may change one, so the create/update results carry
 // the slug back (and slugChange when it differs).
 
@@ -47,7 +47,9 @@ export async function resolveRef(ref: string): Promise<ResolveResult> {
   const m = ref.match(/^([A-Za-z]\w*_DM)\/(.+)$/);
   if (m) return { type: m[1], id: m[2], slug: ref, found: true };
   try {
-    return await rpc<ResolveResult>("ResolveBySlug", { ref });
+    // The server op's param is `idOrSlug` (ResolveBySlugOperation @JsonRpcParam);
+    // `type` is optional (the server derives the model from the slug namespace).
+    return await rpc<ResolveResult>("ResolveBySlug", { idOrSlug: ref });
   } catch {
     return { type: "", id: "", slug: ref, found: false };
   }
@@ -88,13 +90,29 @@ function modelNameOf(type: string): string {
   return `${type.charAt(0).toUpperCase()}${type.slice(1).toLowerCase()}_DM`;
 }
 
+/** Trim leading/trailing whitespace from a string value (recursively for nested
+ * field groups), leaving non-strings untouched. The A12 kernel runs a formal check
+ * (`formalePruefung`) that rejects values with leading/trailing spaces; its form
+ * engine normally trims them before submit, but our hand-rolled SimpleForm bypasses
+ * the engine, so we replicate that trim here to avoid a -32002 rollback. */
+function trimDeep(value: unknown): unknown {
+  if (typeof value === "string") return value.trim();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = trimDeep(v);
+    return out;
+  }
+  return value;
+}
+
 /** Strip the form-engine wrapper keys, leaving the group-keyed field payload the
- * server's ADD/MODIFY_DOCUMENT expects: { <Group>: { ...fields } } (QA-LOG B14). */
-function toServerDocument(document: ContentDocument): ContentDocument {
+ * server's ADD/MODIFY_DOCUMENT expects: { <Group>: { ...fields } } (QA-LOG B14).
+ * String values are trimmed to satisfy the kernel's leading/trailing-space rule. */
+export function toServerDocument(document: ContentDocument): ContentDocument {
   const out: ContentDocument = {};
   for (const [k, v] of Object.entries(document)) {
     if (k === "id" || k === "modelId" || k === "__meta") continue;
-    out[k] = v;
+    out[k] = trimDeep(v);
   }
   return out;
 }
