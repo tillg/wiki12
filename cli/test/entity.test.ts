@@ -97,6 +97,29 @@ test("read by technical id skips ResolveBySlug", async () => {
   assert.deepEqual(calls[0].params, { docRef: "Page_DM/pg_01HXYZ" });
 });
 
+test("read ALWAYS prints the A12 document (unwrapped) incl. the standard envelope", async () => {
+  const doc = {
+    Person: {
+      FirstName: "Ada",
+      LastName: "Lovelace",
+      Slug: "person:ada_lovelace",
+      Title: "Ada Lovelace",
+      CreatedOn: "2026-06-14T00:00:00Z",
+      Changes: [{ ChangedOn: "2026-06-14T00:00:00Z", Summary: "created" }],
+    },
+  };
+  const { ctx, cap } = ctxWith({
+    ResolveBySlug: { docRef: "Person_DM/pe_1" },
+    [OP_READ]: { document: doc },
+  });
+  const code = await runEntity(ctx, "person", "read", ["ada_lovelace"]);
+  assert.equal(code, 0);
+  // Exactly one line, and it parses back to the A12 document (the { document }
+  // wrapper unwrapped) — the CLI's data format is the A12 document itself.
+  assert.equal(cap.lines.length, 1);
+  assert.deepEqual(JSON.parse(cap.lines[0]), doc);
+});
+
 test("read without a ref is a usage error (exit 2)", async () => {
   const { ctx, cap } = ctxWith();
   const code = await runEntity(ctx, "page", "read", []);

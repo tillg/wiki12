@@ -79,6 +79,31 @@ public final class SlugifierTest {
                 Slugifier.searchText(Arrays.asList("A", "", null, "B")));
         eq("searchText empty list -> empty", "", Slugifier.searchText(Collections.<String>emptyList()));
 
+        // --- displayTitle (the human Title envelope field) ---
+        eq("displayTitle joins with space, keeps case", "Till Gartner",
+                Slugifier.displayTitle(Arrays.asList("Till", "Gartner")));
+        eq("displayTitle single value", "Albert Einstein",
+                Slugifier.displayTitle(Collections.singletonList("Albert Einstein")));
+        eq("displayTitle skips empty/null/blank", "First Last",
+                Slugifier.displayTitle(Arrays.asList("First", "", null, "  ", "Last")));
+        eq("displayTitle trims + collapses inner ws", "The Matrix",
+                Slugifier.displayTitle(Arrays.asList("  The   Matrix  ")));
+        eq("displayTitle empty list -> empty", "",
+                Slugifier.displayTitle(Collections.<String>emptyList()));
+
+        // --- updateSummary + SUMMARY_CREATED (the Changes log) ---
+        eq("create summary constant", "created", Slugifier.SUMMARY_CREATED);
+        eq("updateSummary empty -> bare", "updated",
+                Slugifier.updateSummary(Collections.<String>emptyList()));
+        eq("updateSummary single label", "updated: Title",
+                Slugifier.updateSummary(Collections.singletonList("Title")));
+        eq("updateSummary sorts for stability", "updated: Body, Title",
+                Slugifier.updateSummary(Arrays.asList("Title", "Body")));
+        eq("updateSummary drops blanks", "updated: Name",
+                Slugifier.updateSummary(Arrays.asList("Name", "", null, "  ")));
+        eq("updateSummary all-blank -> bare", "updated",
+                Slugifier.updateSummary(Arrays.asList("", null, "  ")));
+
         // --- end-to-end: derive then namespace then suffix ---
         String name = Slugifier.deriveName(Collections.singletonList("Till Gartner"));
         String slug = Slugifier.withSuffix("person:" + name, 2);

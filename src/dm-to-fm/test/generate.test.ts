@@ -18,16 +18,17 @@ function loadDM(name: string): DocumentModel {
   return JSON.parse(readFileSync(join(DM_DIR, name), "utf8")) as DocumentModel;
 }
 
-// Count DM groups (depth-first) that have at least one non-excluded field, and
-// the field ids the form is expected to bind (excluding searchText).
+// The field ids the form is expected to bind: every non-derived field, skipping
+// derived groups (the Changes log) wholesale. Mirrors the generator's exclusion.
 function dmFieldIds(dm: DocumentModel): string[] {
   const ids: string[] = [];
+  function isDerived(el: DMElement): boolean {
+    const anns = (el.annotations as { name: string; value: string }[] | undefined) ?? [];
+    return anns.some((a) => a.name === "wiki12.derived");
+  }
   function visit(el: DMElement): void {
-    if (el.type === "Field") {
-      const anns = (el.annotations as { name: string; value: string }[] | undefined) ?? [];
-      const isSearchText = anns.some((a) => a.name === "wiki12.derived" && a.value === "searchText");
-      if (!isSearchText) ids.push(el.id);
-    }
+    if (el.type === "Group" && isDerived(el)) return; // skip changeLog group + children
+    if (el.type === "Field" && !isDerived(el)) ids.push(el.id);
     const detail = el[el.type] as { elements?: DMElement[] } | undefined;
     for (const child of detail?.elements ?? []) visit(child);
   }
@@ -59,7 +60,7 @@ test("a section per DM group", () => {
   }
 });
 
-test("one control per (non-searchText) field", () => {
+test("one control per (non-derived) field", () => {
   for (const name of ALL) {
     const dm = loadDM(name);
     const fm = generateFormModel(dm);
@@ -87,6 +88,30 @@ test("the wiki12.derived=searchText field is excluded", () => {
     for (const rg of dm.content.modelRoot.rootGroups) visit(rg);
     assert.ok(searchTextId, `${name}: DM has a searchText field`);
     assert.ok(!controlRefs(fm).includes(searchTextId!), `${name}: searchText excluded from form`);
+  }
+});
+
+test("all derived envelope fields are excluded from the form", () => {
+  // No control should bind a field annotated wiki12.derived (slug, searchText,
+  // createdOn, title), and the Changes (changeLog) group must not appear as a
+  // section. Find every derived field id + the changeLog group's field ids.
+  for (const name of ALL) {
+    const dm = loadDM(name);
+    const fm = generateFormModel(dm);
+    const refs = new Set(controlRefs(fm));
+    const forbidden: string[] = [];
+    function visit(el: DMElement): void {
+      const anns = (el.annotations as { name: string; value: string }[] | undefined) ?? [];
+      const derivedGroup = el.type === "Group" && anns.some((a) => a.name === "wiki12.derived");
+      if (el.type === "Field" && anns.some((a) => a.name === "wiki12.derived")) forbidden.push(el.id);
+      const detail = el[el.type] as { elements?: DMElement[] } | undefined;
+      for (const child of detail?.elements ?? []) {
+        if (derivedGroup && child.type === "Field") forbidden.push(child.id); // changeLog children
+        visit(child);
+      }
+    }
+    for (const rg of dm.content.modelRoot.rootGroups) visit(rg);
+    for (const id of forbidden) assert.ok(!refs.has(id), `${name}: derived field ${id} excluded`);
   }
 });
 

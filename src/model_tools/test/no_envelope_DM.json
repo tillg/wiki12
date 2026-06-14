@@ -1,0 +1,82 @@
+{
+  "header": {
+    "id": "NoEnvelope_DM",
+    "modelType": "document",
+    "modelVersion": "28.4.0",
+    "locales": [{ "code": "en" }],
+    "labels": [],
+    "annotations": [{ "name": "roles", "value": "user" }],
+    "modelReferences": []
+  },
+  "content": {
+    "modelInfo": { "name": "NoEnvelope_DM", "immutable": false },
+    "modelConfig": {
+      "timeZone": "UTC",
+      "decimalSeparator": ".",
+      "conditionLanguage": { "code": "en_US" }
+    },
+    "modelRoot": {
+      "rootGroups": [
+        {
+          "type": "Group",
+          "id": "G1",
+          "name": "NoEnvelope",
+          "Group": {
+            "repeatability": 1,
+            "elements": [
+              {
+                "type": "Field",
+                "id": "F1",
+                "name": "Name",
+                "annotations": [
+                  { "name": "wiki12.keyField", "value": "1" },
+                  { "name": "wiki12.searchable", "value": "true" }
+                ],
+                "Field": {
+                  "fieldType": { "type": "StringType" },
+                  "label": [{ "locale": "en", "text": "Name" }]
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F2",
+                "name": "Slug",
+                "annotations": [{ "name": "wiki12.derived", "value": "slug" }],
+                "Field": {
+                  "fieldType": { "type": "StringType" },
+                  "label": [{ "locale": "en", "text": "Slug" }]
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F3",
+                "name": "Description",
+                "annotations": [{ "name": "wiki12.searchable", "value": "true" }],
+                "Field": {
+                  "fieldType": {
+                    "type": "StringType",
+                    "StringType": { "lineBreaksPermitted": true }
+                  },
+                  "label": [{ "locale": "en", "text": "Description" }]
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F4",
+                "name": "searchText",
+                "annotations": [{ "name": "wiki12.derived", "value": "searchText" }],
+                "Field": {
+                  "fieldType": {
+                    "type": "StringType",
+                    "StringType": { "lineBreaksPermitted": true }
+                  },
+                  "label": [{ "locale": "en", "text": "Search Text" }]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

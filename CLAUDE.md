@@ -141,11 +141,16 @@ through the **same** two boundaries, so they can't diverge:
   (try-ID-then-slug) and **`UnifiedSearch`** (batched fan-out across content models).
 - **Models / forms / migrations** → the model-lifecycle service over plain HTTP.
 
-**Slug & search derivation lives only in the Data Service** (`server/`,
+**Slug, search & envelope derivation lives only in the Data Service** (`server/`,
 ADR-0001). A `@CommonDataServicesEventListener` (`WikiContentLifecycleListener`)
-derives the read-only `slug` and a `searchText` blob inside the write
-transaction, reading field-level `wiki12.*` annotations off the Document Model
-(`wiki12.keyField`, `wiki12.derived`, `wiki12.searchable`). Slugs are
+derives the read-only `slug`, a `searchText` blob, and the **standard content
+envelope** — `CreatedOn` (stamped once at create), a derived `Title`, and an
+append-only `Changes` log (one entry per write) — inside the write transaction,
+reading field-level `wiki12.*` annotations off the Document Model
+(`wiki12.keyField`, `wiki12.derived` ∈ {slug, searchText, createdOn, title,
+changeLog}, `wiki12.searchable`, `wiki12.changeField`). Every content model must
+carry the envelope (enforced by `src/model_tools/validate.py` and the
+model-lifecycle upload gate). See `specs/changes/mandatory-content-fields/`. Slugs are
 `<type>:<name>`, `page` is the default namespace, collisions get a sticky `_N`
 suffix fixed at creation. The pure algorithm is isolated in `Slugifier.java` (no
 A12 deps, unit-tested); `SlugDerivationService` owns the A12-bound parts
@@ -195,6 +200,11 @@ in DM header annotation `wiki12.version`, what migrations step between).
 - **Identifiers**: either a Technical ID or a Slug names an item; resolution is
   **try-ID-then-slug**, and a bare name defaults to the `page:` namespace. Slugs
   are read-only/system-derived — surface `old → new` when an edit changes one.
+- **The CLI ALWAYS returns A12 documents as its data format.** A content read
+  (`wiki12 page/entity read …`) emits the **A12 document** itself as JSON — the
+  group-keyed payload incl. the standard envelope (`Title`, `Slug`, `CreatedOn`,
+  the `Changes` log) — never a human-formatted view. It is the machine-consumable,
+  round-trippable contract; do not replace it with prettified output.
 - **Build is per-component, driven by compose** (ADR-0005): no top-level Gradle;
   every image is stamped with the single `VERSION` (`WIKI12_VERSION`).
 - **Read the ADRs** (`docs/adr/`) before changing slug/identity (0001),

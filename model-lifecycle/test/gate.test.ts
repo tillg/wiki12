@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GateError, Registry } from "../src/registry.ts";
 import { generateDefaultFormModel } from "../src/formgen.ts";
-import { personDM, personMigrationV1to2 } from "./helpers.ts";
+import { personDM, personDMNoEnvelope, personMigrationV1to2 } from "./helpers.ts";
 
 test("first deploy (v1) is accepted and generates a default form model", () => {
   const reg = new Registry();
@@ -45,6 +45,20 @@ test("version bump with a MISMATCHED migration is rejected", () => {
     () => reg.deploy(personDM(2), wrong, generateDefaultFormModel),
     (e: unknown) => e instanceof GateError && /does not match the bump/.test((e as Error).message),
   );
+});
+
+test("a content model missing the standard envelope is rejected", () => {
+  const reg = new Registry();
+  assert.throws(
+    () => reg.deploy(personDMNoEnvelope(1), undefined, generateDefaultFormModel),
+    (e: unknown) =>
+      e instanceof GateError &&
+      /missing standard content envelope/.test((e as Error).message) &&
+      /CreatedOn/.test((e as Error).message) &&
+      /Changes group/.test((e as Error).message),
+  );
+  // Nothing was deployed.
+  assert.equal(reg.deployedVersion("Person"), 0);
 });
 
 test("re-deploying the same version (no bump) needs no migration", () => {

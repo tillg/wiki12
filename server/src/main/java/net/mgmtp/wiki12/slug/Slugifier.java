@@ -124,6 +124,75 @@ public final class Slugifier {
         return slugify(joined.toString());
     }
 
+    /** The change-log summary written for a brand-new document (the standard envelope). */
+    public static final String SUMMARY_CREATED = "created";
+
+    /**
+     * Derive the human display {@code Title} from a type's ordered key-field values:
+     * join the non-blank, trimmed values with a single space, preserving the original
+     * casing (the display counterpart to {@link #deriveName}, which slugifies). Order
+     * is the caller's responsibility (it reads {@code wiki12.keyField} ordering).
+     *
+     * <pre>
+     * ["Till", "Gartner"]   -> "Till Gartner"
+     * ["First", "", "Last"] -> "First Last"
+     * </pre>
+     *
+     * @param keyFieldValues key-field values in key-field order
+     * @return the joined, whitespace-collapsed display title (possibly empty)
+     */
+    public static String displayTitle(List<String> keyFieldValues) {
+        if (keyFieldValues == null || keyFieldValues.isEmpty()) {
+            return "";
+        }
+        StringBuilder joined = new StringBuilder();
+        for (String v : keyFieldValues) {
+            if (v == null) {
+                continue;
+            }
+            String t = v.trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            if (joined.length() > 0) {
+                joined.append(' ');
+            }
+            joined.append(t);
+        }
+        return joined.toString().replaceAll("\\s+", " ").trim();
+    }
+
+    /**
+     * Build the change-log {@code Summary} for an update from the labels of the fields
+     * that changed. The labels are sorted for a stable, deterministic string regardless
+     * of the caller's diff iteration order. Blank/duplicate labels are dropped. An empty
+     * (or all-blank) set yields the bare {@code "updated"}.
+     *
+     * <pre>
+     * []                 -> "updated"
+     * ["Title"]          -> "updated: Title"
+     * ["Body", "Title"]  -> "updated: Body, Title"
+     * </pre>
+     *
+     * @param changedFieldLabels labels of the fields whose values changed
+     * @return {@code "updated"} or {@code "updated: <sorted, comma-joined labels>"}
+     */
+    public static String updateSummary(List<String> changedFieldLabels) {
+        if (changedFieldLabels == null || changedFieldLabels.isEmpty()) {
+            return "updated";
+        }
+        java.util.TreeSet<String> labels = new java.util.TreeSet<>();
+        for (String l : changedFieldLabels) {
+            if (l != null && !l.trim().isEmpty()) {
+                labels.add(l.trim());
+            }
+        }
+        if (labels.isEmpty()) {
+            return "updated";
+        }
+        return "updated: " + String.join(", ", labels);
+    }
+
     /**
      * Build the {@code searchText} blob from a type's searchable field values:
      * lowercase, join with a single space, and collapse runs of whitespace to one

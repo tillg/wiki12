@@ -41,6 +41,38 @@ own Data Model and supplies the `<type>` prefix of the Slug. (`page` is the
 built-in type; Entity Types are the ones users add.)
 _Avoid_: Kind, class, category.
 
+**Content Envelope**:
+The set of standard, system-maintained fields **every** Content item carries
+regardless of type — **CreatedOn**, **Title**, and **Changes** — alongside the
+existing **Slug** and **searchText**. The type-independent surface generic code
+(search rows, listings, audit) can rely on without knowing the type. Members are
+never user-authored; the Data Service derives them in the write transaction
+(ADR-0001). New content models must carry the envelope (enforced by the model
+validator and the upload gate).
+_Avoid_: metadata, header, system fields (when you mean this specific set).
+
+**CreatedOn**:
+The instant a Content item was first persisted (`DateTimeType`, UTC). Stamped
+**once** by the Data Service at create and never changed on update — immutable.
+Read-only; never part of a write payload.
+_Avoid_: timestamp, created date, dateCreated.
+
+**Title**:
+The uniform human display label of a Content item, exposed as a `Title` field on
+every type — the display counterpart to the Slug (`person:till_gartner` ↔ `Till
+Gartner`). Either an **authored** Key Field (Page, Film) or a **derived,
+read-only** field computed from the Key Fields (Person → `FirstName LastName`,
+Location → `Name`). Every type exposes a `Title` either way.
+_Avoid_: name, label, heading, displayName.
+
+**Changes** / **Change Entry**:
+The append-only change log of a Content item: an ordered list of Change Entries,
+each a `{ ChangedOn, Summary }` pair. The Data Service appends exactly one entry
+per write — `created` on create, `updated: <changed fields>` on update. Users
+never author entries. Realised as a native A12 repeatable Group.
+_Avoid_: history, audit log, revisions, versions (it is a summary trail, not full
+versioning).
+
 ### Identity
 
 Either identifier resolves an item: anywhere a Page or Entity must be named
@@ -68,7 +100,9 @@ _Avoid_: Permalink, handle, URL key.
 
 **Key Fields**:
 The fields a Slug is derived from (Page: title; person: first + last name; per
-Entity Type). Editing a Key Field can change the Slug.
+Entity Type). They feed **two** derivations: the **Slug** (slugified machine
+handle) and the derived **Title** (human display label). Editing a Key Field can
+therefore change both the Slug and the Title.
 _Avoid_: Natural key, business key.
 
 ### Models

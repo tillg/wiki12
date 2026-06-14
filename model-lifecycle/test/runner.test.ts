@@ -7,7 +7,21 @@ import { DataService } from "../src/dataservice.ts";
 import { runMigration, transpile } from "../src/migrate/runner.ts";
 import { getSandbox } from "../src/migrate/sandbox.ts";
 import { makeFakeTransport } from "./fake-dataservice.ts";
-import { personDM, personDoc, personMigrationV1to2 } from "./helpers.ts";
+import { envelopeMigrationV1to2, personDM, personDoc, personMigrationV1to2 } from "./helpers.ts";
+
+test("envelope migration backfills CreatedOn + Changes (type-agnostic, no globals)", async () => {
+  const sandbox = await getSandbox();
+  const compiled = transpile(envelopeMigrationV1to2().script);
+  const doc = personDoc({ id: "z", first: "Ada", last: "Lovelace" });
+  const res = await sandbox.run(compiled, doc);
+  assert.equal(res.ok, true, res.error);
+  const person = (res.value as typeof doc).Person as Record<string, unknown>;
+  assert.equal(person.CreatedOn, "2026-06-14T00:00:00Z", "CreatedOn backfilled");
+  assert.deepEqual(person.Changes, [{ ChangedOn: "2026-06-14T00:00:00Z", Summary: "migrated to v2" }]);
+  // Existing fields preserved; Title left for the listener to derive (not set here).
+  assert.equal(person.FirstName, "Ada");
+  assert.equal(person.Title, undefined);
+});
 
 test("transpile + sandbox applies the per-document transform", async () => {
   const sandbox = await getSandbox();

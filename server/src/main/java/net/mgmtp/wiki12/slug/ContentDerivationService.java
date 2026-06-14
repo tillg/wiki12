@@ -15,9 +15,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -44,7 +46,7 @@ import java.util.Optional;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class SlugDerivationService {
+public class ContentDerivationService {
 
     // VERIFY: JdbcTemplate must be backed by the SAME DataSource/transaction A12 uses
     // for the write (spring.datasources.dataservices). If A12 registers multiple
@@ -121,12 +123,105 @@ public class SlugDerivationService {
         if (config.hasSearchTextTarget()) {
             updates.add(UpdateAction.putFieldValue(config.searchTextFieldPath(), searchText));
         }
+
+        // (e) Standard content envelope (specs/changes/mandatory-content-fields).
+        boolean isCreate = persisted == null;
+        String now = nowIso();
+
+        // CreatedOn: stamped once at create, never on update (immutable audit).
+        if (isCreate && config.hasCreatedOnTarget()) {
+            updates.add(UpdateAction.putFieldValue(config.createdOnFieldPath(), now));
+        }
+
+        // Title: human display label derived from the key-field values (original
+        // casing), for models that declare a derived title. Re-derived every write.
+        if (config.hasTitleTarget()) {
+            updates.add(UpdateAction.putFieldValue(config.titleFieldPath(),
+                    Slugifier.displayTitle(keyValues)));
+        }
+
+        // Changes: append one entry {ChangedOn=now, Summary} per write.
+        if (config.hasChangeLog()) {
+            String summary = isCreate
+                    ? Slugifier.SUMMARY_CREATED
+                    : Slugifier.updateSummary(changedFieldLabels(document, persisted, config));
+            appendChangeEntry(updates, config, persisted, now, summary);
+        }
+
         // VERIFY: withBatchUpdates(...) is the documented batched-mutation API
         // (dev_tutorial_backend_document_manipulation.md). It returns a new immutable
         // DocumentV2.
         DocumentV2 mutated = document.withBatchUpdates(updates);
 
         return new Result(mutated, true, oldSlug, newSlug);
+    }
+
+    // ------------------------------------------------------------------
+    // Standard content envelope helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * The current write instant as the string A12 stores for a {@code DateTimeType}.
+     */
+    private String nowIso() {
+        // VERIFY (envelope #1, #3): two assumptions bundled here.
+        //  (1) Write clock — whether DocumentBefore*Event / the kernel exposes a canonical
+        //      transaction timestamp to prefer over server wall-clock. Using Instant.now()
+        //      for now (the model timeZone is UTC).
+        //  (2) DateTimeType wire format — confirm the exact ISO string A12 expects for a
+        //      DateTimeType field value (Instant.toString() yields e.g. 2026-06-14T10:15:30Z).
+        return Instant.now().toString();
+    }
+
+    /** Labels of the user-editable fields whose value differs between updated and persisted. */
+    private List<String> changedFieldLabels(DocumentV2 updated, DocumentV2 persisted,
+            ModelDerivationConfig config) {
+        List<String> labels = new ArrayList<>();
+        for (EditableField ef : config.editableFields()) {
+            String now = readFieldValue(updated, ef.path());
+            String before = readFieldValue(persisted, ef.path());
+            if (!Objects.equals(now, before)) {
+                labels.add(ef.label());
+            }
+        }
+        return labels;
+    }
+
+    /** Append a {@code {ChangedOn, Summary}} repetition to the change-log group. */
+    private void appendChangeEntry(List<UpdateAction> updates, ModelDerivationConfig config,
+            DocumentV2 persisted, String now, String summary) {
+        // The new entry goes at the next free index = current repetition count (0 on create).
+        int index = persisted == null ? 0 : changeEntryCount(persisted, config.changeLogGroupPath());
+        String group = config.changeLogGroupPath();
+        String entry = group + "[" + index + "]";
+        // datetime/summary paths are group-relative; re-root them under the indexed entry.
+        String dtPath = entry + config.changeDatetimePath().substring(group.length());
+        String sumPath = entry + config.changeSummaryPath().substring(group.length());
+        // VERIFY (envelope #2): adding a repetition to a repeatable group. We model it as a
+        // putFieldValue on the indexed path "/Changes[N]/Field"; confirm A12 auto-creates the
+        // Nth repetition on first write to an indexed path, or whether a dedicated
+        // "add repetition" UpdateAction / document-builder call is required first.
+        updates.add(UpdateAction.putFieldValue(dtPath, now));
+        updates.add(UpdateAction.putFieldValue(sumPath, summary));
+    }
+
+    /** Number of existing repetitions in the change-log group of a persisted document. */
+    private int changeEntryCount(DocumentV2 document, String groupPath) {
+        // VERIFY (envelope #2): reading the repetition count of a repeatable group from a
+        // DocumentV2 (likely via the field/group instance API). Stubbed to 0 until wired —
+        // until then updates would overwrite entry 0 rather than append.
+        return 0;
+    }
+
+    /** Display label of a field (for the change-log diff); falls back to the field name. */
+    private String fieldLabel(IField field) {
+        // VERIFY (envelope #4): reading a field's localized label (IField label accessor).
+        // Falls back to the field name, which is always available.
+        try {
+            return field.getName();
+        } catch (RuntimeException e) {
+            return "field";
+        }
     }
 
     // ------------------------------------------------------------------
@@ -248,21 +343,39 @@ public class SlugDerivationService {
         List<KeyField> keyFields = new ArrayList<>();
         String slugFieldPath = null;
         String searchTextFieldPath = null;
+        String createdOnFieldPath = null;
+        String titleFieldPath = null;
+        String changeDatetimePath = null;
+        String changeSummaryPath = null;
         List<String> searchablePaths = new ArrayList<>();
+        List<EditableField> editableFields = new ArrayList<>();
 
         for (IField field : fields) {
             String path = fieldPath(field);
-            String keyOrder = annotationValue(field, SlugAnnotations.KEY_FIELD);
+            String keyOrder = annotationValue(field, WikiAnnotations.KEY_FIELD);
             if (keyOrder != null) {
                 keyFields.add(new KeyField(path, keyOrder));
             }
-            String derived = annotationValue(field, SlugAnnotations.DERIVED);
-            if (SlugAnnotations.DERIVED_SLUG.equals(derived)) {
+            String derived = annotationValue(field, WikiAnnotations.DERIVED);
+            String changeField = annotationValue(field, WikiAnnotations.CHANGE_FIELD);
+            if (WikiAnnotations.DERIVED_SLUG.equals(derived)) {
                 slugFieldPath = path;
-            } else if (SlugAnnotations.DERIVED_SEARCH_TEXT.equals(derived)) {
+            } else if (WikiAnnotations.DERIVED_SEARCH_TEXT.equals(derived)) {
                 searchTextFieldPath = path;
+            } else if (WikiAnnotations.DERIVED_CREATED_ON.equals(derived)) {
+                createdOnFieldPath = path;
+            } else if (WikiAnnotations.DERIVED_TITLE.equals(derived)) {
+                titleFieldPath = path;
+            } else if (WikiAnnotations.CHANGE_FIELD_DATETIME.equals(changeField)) {
+                changeDatetimePath = path;
+            } else if (WikiAnnotations.CHANGE_FIELD_SUMMARY.equals(changeField)) {
+                changeSummaryPath = path;
+            } else if (derived == null && changeField == null) {
+                // A user-editable field (no derived/changeField role) — tracked for the
+                // change-log diff. Key fields are editable too, so they are included.
+                editableFields.add(new EditableField(path, fieldLabel(field)));
             }
-            if (SlugAnnotations.SEARCHABLE_TRUE.equals(annotationValue(field, SlugAnnotations.SEARCHABLE))) {
+            if (WikiAnnotations.SEARCHABLE_TRUE.equals(annotationValue(field, WikiAnnotations.SEARCHABLE))) {
                 searchablePaths.add(path);
             }
         }
@@ -270,7 +383,16 @@ public class SlugDerivationService {
         keyFields.sort(Comparator.comparing(kf -> kf.order));
         List<String> keyPaths = keyFields.stream().map(kf -> kf.path).toList();
 
-        return new ModelDerivationConfig(keyPaths, slugFieldPath, searchTextFieldPath, searchablePaths);
+        // The change-log group is the parent of its datetime/summary child fields, so
+        // its path is the datetime field's path with the last segment removed
+        // ("/Changes/ChangedOn" -> "/Changes"). Avoids a separate group annotation walk.
+        String changeLogGroupPath = changeDatetimePath == null
+                ? null
+                : changeDatetimePath.substring(0, changeDatetimePath.lastIndexOf('/'));
+
+        return new ModelDerivationConfig(keyPaths, slugFieldPath, searchTextFieldPath, searchablePaths,
+                createdOnFieldPath, titleFieldPath, changeLogGroupPath, changeDatetimePath,
+                changeSummaryPath, editableFields);
     }
 
     // ------------------------------------------------------------------
@@ -357,12 +479,22 @@ public class SlugDerivationService {
     private record KeyField(String path, String order) {
     }
 
+    /** A non-derived (user-editable) field: its absolute path + display label, for the change diff. */
+    record EditableField(String path, String label) {
+    }
+
     /** Resolved per-model derivation paths read from the wiki12.* annotations. */
     record ModelDerivationConfig(
             List<String> keyFieldPaths,
             String slugFieldPath,
             String searchTextFieldPath,
-            List<String> searchableFieldPaths) {
+            List<String> searchableFieldPaths,
+            String createdOnFieldPath,
+            String titleFieldPath,
+            String changeLogGroupPath,
+            String changeDatetimePath,
+            String changeSummaryPath,
+            List<EditableField> editableFields) {
 
         boolean hasSlugTarget() {
             return slugFieldPath != null;
@@ -370,6 +502,20 @@ public class SlugDerivationService {
 
         boolean hasSearchTextTarget() {
             return searchTextFieldPath != null;
+        }
+
+        boolean hasCreatedOnTarget() {
+            return createdOnFieldPath != null;
+        }
+
+        boolean hasTitleTarget() {
+            return titleFieldPath != null;
+        }
+
+        boolean hasChangeLog() {
+            return changeLogGroupPath != null
+                    && changeDatetimePath != null
+                    && changeSummaryPath != null;
         }
     }
 }

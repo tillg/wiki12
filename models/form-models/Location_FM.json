@@ -164,18 +164,6 @@
                     "cell": [
                       {
                         "type": "Control",
-                        "id": "control-F2",
-                        "elementRef": "F2"
-                      }
-                    ]
-                  },
-                  {
-                    "type": "Row",
-                    "id": "row-G1-3",
-                    "name": "r3",
-                    "cell": [
-                      {
-                        "type": "Control",
                         "id": "control-F3",
                         "elementRef": "F3"
                       }
@@ -183,8 +171,8 @@
                   },
                   {
                     "type": "Row",
-                    "id": "row-G1-4",
-                    "name": "r4",
+                    "id": "row-G1-3",
+                    "name": "r3",
                     "cell": [
                       {
                         "type": "Control",

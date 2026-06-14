@@ -87,8 +87,14 @@ wiki12 migrate person --from 1 --to 2 --dry-run
   `page:albert_einstein`).
 - **Entity** — a content item of a user-defined type, with a globally unique
   namespaced slug, e.g. `person:till_gartner`.
+- **Content envelope** — every content item carries three standard,
+  system-maintained fields beyond its own: **CreatedOn** (stamped once at create),
+  a **Title** display label (authored or derived from the key fields), and an
+  append-only **Changes** log (one `{ ChangedOn, Summary }` entry per write). All
+  read-only, derived in the Data Service write transaction.
 - **Data model / form model** — content structure is model-driven via A12; form
-  models are auto-generated when not provided.
+  models are auto-generated when not provided (derived envelope fields are
+  excluded from edit forms).
 - **Migrations** — TypeScript scripts upgrade existing instances when a data
   model changes version.
 
