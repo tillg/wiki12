@@ -45,6 +45,7 @@ flowchart LR
     C["New /search?q=&type= route over unifiedSearch"]
     D["Header search box -> /search"]
     E["Graceful fallback to Technical ID when Slug absent"]
+    J["Browse 'Full size' navigates to the deep link; split-pane keeps '/'"]
   end
   subgraph out["Out of scope"]
     F["Server slug-derivation listener (separate, ongoing work)"]
@@ -64,6 +65,10 @@ flowchart LR
 - Add a search input (application header) that navigates to `/search`.
 - Keep `/view/:ref` and `/edit/:ref` resolving **either** a Slug **or** a
   Technical ID (try-ID-then-slug is preserved — old/ID links keep working).
+- **Browse landing URL behavior:** opening a card's **inline** (split-pane)
+  detail leaves the URL at `/` (a transient, in-page interaction). Switching that
+  detail to **Full size** navigates to the deep link `/view/<slug>` (the
+  standalone, bookmarkable view); returning to split / closing goes back to `/`.
 
 **Out of scope:**
 - The **server-side** Slug derivation (the `WikiContentLifecycleListener`) and the

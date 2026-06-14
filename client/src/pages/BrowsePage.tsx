@@ -11,13 +11,16 @@
 
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { filterCards, listAllContent, type ContentCardData } from "../api/search";
 import { readByRef, type ContentItem } from "../api/content";
 import { ContentCard } from "../components/ContentCard";
 import { CardGrid } from "../components/CardGrid";
 import { ContentDetailView } from "../components/ContentDetailView";
 import { Banner } from "../components/Ui";
+import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
+import { TextField } from "@com.mgmtp.a12.widgets/widgets-core/lib/input";
+import { Icon } from "@com.mgmtp.a12.widgets/widgets-core/lib/icon";
 
 /** Detail panel: fetch the full document for the selected card and render it read-only. */
 function DetailPanel({
@@ -33,6 +36,7 @@ function DetailPanel({
 }): ReactElement {
   const [doc, setDoc] = useState<ContentItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
@@ -60,15 +64,19 @@ function DetailPanel({
       }}
     >
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
-        <button onClick={onClose} style={{ fontSize: "0.8rem", cursor: "pointer" }}>
-          ← Close
-        </button>
-        <Link to={`/edit/${encodeURIComponent(item.id)}`} style={{ fontSize: "0.8rem" }}>
-          Edit
-        </Link>
-        <button onClick={onToggleFullSize} style={{ fontSize: "0.8rem", cursor: "pointer" }}>
-          {fullSize ? "Split view" : "Full size"}
-        </button>
+        <Button icon={<Icon>close</Icon>} secondary title="Close" onClick={onClose} />
+        <Button
+          icon={<Icon>edit</Icon>}
+          secondary
+          title="Edit"
+          onClick={() => navigate(`/edit/${encodeURIComponent(item.id)}`)}
+        />
+        <Button
+          icon={<Icon>{fullSize ? "fullscreen_exit" : "fullscreen"}</Icon>}
+          secondary
+          title={fullSize ? "Split view" : "Full size"}
+          onClick={onToggleFullSize}
+        />
       </div>
       {error && <Banner kind="error">{error}</Banner>}
       {!doc && !error && <p style={{ color: "#888" }}>Loading…</p>}
@@ -105,13 +113,15 @@ export function BrowsePage(): ReactElement {
       <div style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start" }}>
         {showMaster && (
           <div style={{ flex: 1, minWidth: 0 }}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter by title or content…"
-              aria-label="Filter content"
-              style={{ width: "100%", maxWidth: "32rem", padding: "0.45rem", marginBottom: "1rem", boxSizing: "border-box" }}
-            />
+            <div style={{ marginBottom: "1rem" }}>
+              <TextField
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filter by title or content…"
+                inputProps={{ "aria-label": "Filter content" }}
+                style={{ width: "100%", maxWidth: "32rem" }}
+              />
+            </div>
             {error && <Banner kind="error">{error}</Banner>}
             {loading && <p style={{ color: "#666" }}>Loading…</p>}
             {!loading && !error && cards.length === 0 && (

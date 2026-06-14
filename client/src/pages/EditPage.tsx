@@ -13,6 +13,7 @@ import {
 import { parseDocModel, type DocModelInfo } from "../lib/docModel.ts";
 import { SimpleForm, type SimpleFormHandle } from "../components/SimpleForm";
 import { Banner, ConfirmDialog } from "../components/Ui";
+import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
 
 // /edit/:ref  -> edit existing (ref = id-or-slug)
 // /create?type=Page -> create new of the given type
@@ -128,13 +129,14 @@ export function EditPage(): ReactElement {
       )}
 
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
-        <button onClick={save} disabled={saving || !docModel}>
-          {saving ? "Saving…" : "Save"}
-        </button>
+        <Button
+          label={saving ? "Saving…" : "Save"}
+          primary
+          onClick={save}
+          disabled={saving || !docModel}
+        />
         {!isCreate && existing && (
-          <button onClick={() => setConfirmDelete(true)} style={{ color: "#b00" }}>
-            Delete
-          </button>
+          <Button label="Delete" destructive onClick={() => setConfirmDelete(true)} />
         )}
       </div>
 

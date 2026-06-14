@@ -9,6 +9,7 @@ import "@com.mgmtp.a12.widgets/widgets-core/lib/theme/basic.css";
 import { ApplicationFrame } from "@com.mgmtp.a12.widgets/widgets-core/lib/layout/application-frame";
 import { ApplicationHeader } from "@com.mgmtp.a12.widgets/widgets-core/lib/application-header";
 import { FlyoutMenu } from "@com.mgmtp.a12.widgets/widgets-core/lib/menu";
+import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
 
 import { BrowsePage } from "./pages/BrowsePage";
 import { ViewPage } from "./pages/ViewPage";
@@ -45,12 +46,7 @@ function Shell(): ReactElement {
           rightSlots={
             <span style={{ display: "flex", alignItems: "center", gap: "0.75rem", fontSize: "0.85rem" }}>
               <span style={{ opacity: 0.8 }}>{getUser()}</span>
-              <button
-                onClick={() => logout()}
-                style={{ background: "transparent", border: "1px solid currentColor", color: "inherit", borderRadius: 4, padding: "0.2rem 0.6rem", cursor: "pointer" }}
-              >
-                Log out
-              </button>
+              <Button label="Log out" secondary onClick={() => logout()} />
             </span>
           }
         />

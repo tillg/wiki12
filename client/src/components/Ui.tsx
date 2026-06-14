@@ -2,6 +2,8 @@
 
 import type { ReactElement, ReactNode } from "react";
 
+import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
+
 export function Chip(props: { children: ReactNode; tone?: "kind" | "type" }): ReactElement {
   const bg = props.tone === "kind" ? "#e6eef7" : "#eef3e6";
   return (
@@ -49,15 +51,7 @@ export function Banner(props: {
       }}
     >
       <span>{props.children}</span>
-      {props.onClose && (
-        <button
-          onClick={props.onClose}
-          aria-label="Dismiss"
-          style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: "1rem" }}
-        >
-          ×
-        </button>
-      )}
+      {props.onClose && <Button label="×" secondary title="Dismiss" onClick={props.onClose} />}
     </div>
   );
 }
@@ -89,10 +83,8 @@ export function ConfirmDialog(props: {
         <h3 style={{ marginTop: 0 }}>{props.title}</h3>
         <div style={{ marginBottom: "1rem" }}>{props.message}</div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-          <button onClick={props.onCancel}>Cancel</button>
-          <button onClick={props.onConfirm} style={{ background: "#b00", color: "#fff", border: "none", padding: "0.4rem 0.9rem", borderRadius: 3 }}>
-            {props.confirmLabel ?? "Confirm"}
-          </button>
+          <Button label="Cancel" secondary onClick={props.onCancel} />
+          <Button label={props.confirmLabel ?? "Confirm"} destructive onClick={props.onConfirm} />
         </div>
       </div>
     </div>

@@ -3,6 +3,8 @@ import type { ReactElement } from "react";
 import { listMigrations, saveMigrationScript, type Migration } from "../api/lifecycle";
 import { getRuntimeConfig } from "../lib/runtimeConfig";
 import { Banner } from "../components/Ui";
+import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
+import { TextAreaStateless } from "@com.mgmtp.a12.widgets/widgets-core/lib/input";
 
 export function SystemPage(): ReactElement {
   const { KEYCLOAK_CONSOLE_URL } = getRuntimeConfig();
@@ -65,33 +67,36 @@ export function SystemPage(): ReactElement {
         <ul style={{ listStyle: "none", padding: 0 }}>
           {migrations.map((m) => (
             <li key={m.id} style={{ borderBottom: "1px solid #eee", padding: "0.5rem 0" }}>
-              <button
+              <Button
+                secondary
                 onClick={() => (openId === m.id ? setOpenId(null) : open(m))}
-                style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: "0.95rem" }}
-              >
-                <strong>{m.targetModel}</strong> {String(m.fromVersion)} → {String(m.toVersion)}{" "}
-                <span style={{ color: "#999", fontFamily: "monospace" }}>({m.id})</span>
-              </button>
+                label={
+                  <>
+                    <strong>{m.targetModel}</strong> {String(m.fromVersion)} → {String(m.toVersion)}{" "}
+                    <span style={{ color: "#999", fontFamily: "monospace" }}>({m.id})</span>
+                  </>
+                }
+              />
 
               {openId === m.id && (
                 <div style={{ marginTop: "0.5rem" }}>
-                  <textarea
+                  <TextAreaStateless
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    spellCheck={false}
-                    rows={16}
-                    style={{
-                      width: "100%",
-                      fontFamily: "monospace",
-                      fontSize: "0.85rem",
-                      padding: "0.5rem",
-                      boxSizing: "border-box",
+                    wrapperStyle={{ width: "100%" }}
+                    inputProps={{
+                      spellCheck: false,
+                      rows: 16,
+                      style: { fontFamily: "monospace", fontSize: "0.85rem" },
                     }}
                   />
                   <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.4rem" }}>
-                    <button onClick={() => save(m.id)} disabled={saving}>
-                      {saving ? "Saving…" : "Save TS source"}
-                    </button>
+                    <Button
+                      label={saving ? "Saving…" : "Save TS source"}
+                      primary
+                      onClick={() => save(m.id)}
+                      disabled={saving}
+                    />
                     {status && <span style={{ fontSize: "0.85rem", color: "#555" }}>{status}</span>}
                   </div>
                 </div>

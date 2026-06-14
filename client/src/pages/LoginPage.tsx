@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 
 import { login } from "../lib/auth.ts";
+import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
+import { TextField } from "@com.mgmtp.a12.widgets/widgets-core/lib/input";
 
 /** Login screen shown when there is no active session. On success, auth state
  * changes and App swaps in the application shell. */
@@ -43,33 +45,33 @@ export function LoginPage(): ReactElement {
 
         <label style={{ display: "block", fontSize: "0.8rem", color: "#555" }}>
           Username
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            autoFocus
-            style={inputStyle}
-          />
+          <div style={inputWrapStyle}>
+            <TextField
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              inputProps={{ autoComplete: "username", autoFocus: true }}
+            />
+          </div>
         </label>
 
         <label style={{ display: "block", fontSize: "0.8rem", color: "#555", marginTop: "0.75rem" }}>
           Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            style={inputStyle}
-          />
+          <div style={inputWrapStyle}>
+            <TextField
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              inputProps={{ type: "password", autoComplete: "current-password" }}
+            />
+          </div>
         </label>
 
         {error && (
           <div style={{ marginTop: "0.75rem", color: "#b00020", fontSize: "0.85rem" }}>{error}</div>
         )}
 
-        <button type="submit" disabled={busy} style={buttonStyle}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
+        <div style={{ marginTop: "1.25rem" }}>
+          <Button label={busy ? "Signing in…" : "Sign in"} primary type="submit" disabled={busy} block />
+        </div>
         <p style={{ margin: "0.9rem 0 0", color: "#999", fontSize: "0.75rem" }}>
           Default dev user: <code>admin</code> / <code>admin</code>
         </p>
@@ -78,24 +80,7 @@ export function LoginPage(): ReactElement {
   );
 }
 
-const inputStyle: React.CSSProperties = {
+const inputWrapStyle: React.CSSProperties = {
   width: "100%",
   marginTop: "0.25rem",
-  padding: "0.5rem 0.6rem",
-  border: "1px solid #ccc",
-  borderRadius: 4,
-  fontSize: "0.95rem",
-  boxSizing: "border-box",
-};
-
-const buttonStyle: React.CSSProperties = {
-  marginTop: "1.25rem",
-  width: "100%",
-  padding: "0.6rem",
-  background: "#2f6fed",
-  color: "#fff",
-  border: "none",
-  borderRadius: 4,
-  fontSize: "0.95rem",
-  cursor: "pointer",
 };
