@@ -3,9 +3,9 @@
 // We import the Document/Form model shapes read-only from the dm-to-fm package
 // (the form generator we reuse). Everything else here is local to this service.
 
-import type { DocumentModel, FormModel } from "../../src/dm-to-fm/src/types.ts";
+import type { DMElement, DocumentModel, FormModel } from "../../src/dm-to-fm/src/types.ts";
 
-export type { DocumentModel, FormModel };
+export type { DMElement, DocumentModel, FormModel };
 
 // ---- A12 documents (content instances) ----
 // An A12 document carries a `__meta` block (docRef, modelVersion, …) plus the

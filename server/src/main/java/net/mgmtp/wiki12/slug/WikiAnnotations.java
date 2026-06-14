@@ -11,9 +11,9 @@ package net.mgmtp.wiki12.slug;
  * {@code wiki12.derived="slug"}; {@code searchText} carries
  * {@code wiki12.derived="searchText"}.
  */
-public final class SlugAnnotations {
+public final class WikiAnnotations {
 
-    private SlugAnnotations() {
+    private WikiAnnotations() {
         // constants holder
     }
 
@@ -35,6 +35,38 @@ public final class SlugAnnotations {
 
     /** {@link #DERIVED} value identifying the target field for the searchText blob. */
     public static final String DERIVED_SEARCH_TEXT = "searchText";
+
+    /**
+     * {@link #DERIVED} value identifying the {@code CreatedOn} field — a
+     * {@code DateTimeType} stamped once at create and never on update (the standard
+     * content envelope, see {@code specs/changes/mandatory-content-fields/}).
+     */
+    public static final String DERIVED_CREATED_ON = "createdOn";
+
+    /**
+     * {@link #DERIVED} value identifying the derived display {@code Title} field —
+     * derived (human-readable) from the key fields. Present only on models whose key
+     * fields are not themselves an authored title.
+     */
+    public static final String DERIVED_TITLE = "title";
+
+    /**
+     * {@link #DERIVED} value identifying the repeatable {@code Changes} group — the
+     * append-only change log; one entry is appended per write.
+     */
+    public static final String DERIVED_CHANGE_LOG = "changeLog";
+
+    /**
+     * Field annotation marking a field inside the {@link #DERIVED_CHANGE_LOG} group.
+     * Its value is one of {@link #CHANGE_FIELD_DATETIME} or {@link #CHANGE_FIELD_SUMMARY}.
+     */
+    public static final String CHANGE_FIELD = "wiki12.changeField";
+
+    /** {@link #CHANGE_FIELD} value: the change-entry timestamp ({@code DateTimeType}). */
+    public static final String CHANGE_FIELD_DATETIME = "datetime";
+
+    /** {@link #CHANGE_FIELD} value: the change-entry summary ({@code StringType}). */
+    public static final String CHANGE_FIELD_SUMMARY = "summary";
 
     /**
      * Field annotation ({@code "true"}) marking a field whose value is concatenated

@@ -164,8 +164,8 @@
                     "cell": [
                       {
                         "type": "Control",
-                        "id": "control-F2",
-                        "elementRef": "F2"
+                        "id": "control-F3",
+                        "elementRef": "F3"
                       }
                     ]
                   },
@@ -176,18 +176,6 @@
                     "cell": [
                       {
                         "type": "Control",
-                        "id": "control-F3",
-                        "elementRef": "F3"
-                      }
-                    ]
-                  },
-                  {
-                    "type": "Row",
-                    "id": "row-G1-4",
-                    "name": "r4",
-                    "cell": [
-                      {
-                        "type": "Control",
                         "id": "control-F4",
                         "elementRef": "F4"
                       }
@@ -195,8 +183,8 @@
                   },
                   {
                     "type": "Row",
-                    "id": "row-G1-5",
-                    "name": "r5",
+                    "id": "row-G1-4",
+                    "name": "r4",
                     "cell": [
                       {
                         "type": "Control",

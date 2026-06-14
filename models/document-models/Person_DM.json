@@ -16,6 +16,10 @@
       {
         "name": "roles",
         "value": "user"
+      },
+      {
+        "name": "wiki12.version",
+        "value": "2"
       }
     ],
     "modelReferences": []
@@ -236,6 +240,126 @@
                     {
                       "locale": "de",
                       "text": "Suchtext"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F8",
+                "name": "Title",
+                "annotations": [
+                  {
+                    "name": "wiki12.derived",
+                    "value": "title"
+                  }
+                ],
+                "Field": {
+                  "fieldType": {
+                    "type": "StringType"
+                  },
+                  "label": [
+                    {
+                      "locale": "en",
+                      "text": "Title"
+                    },
+                    {
+                      "locale": "de",
+                      "text": "Titel"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "Field",
+                "id": "F9",
+                "name": "CreatedOn",
+                "annotations": [
+                  {
+                    "name": "wiki12.derived",
+                    "value": "createdOn"
+                  }
+                ],
+                "Field": {
+                  "fieldType": {
+                    "type": "DateTimeType"
+                  },
+                  "label": [
+                    {
+                      "locale": "en",
+                      "text": "Created On"
+                    },
+                    {
+                      "locale": "de",
+                      "text": "Erstellt am"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "Group",
+                "id": "G2",
+                "name": "Changes",
+                "annotations": [
+                  {
+                    "name": "wiki12.derived",
+                    "value": "changeLog"
+                  }
+                ],
+                "Group": {
+                  "repeatability": 999999,
+                  "elements": [
+                    {
+                      "type": "Field",
+                      "id": "F10",
+                      "name": "ChangedOn",
+                      "annotations": [
+                        {
+                          "name": "wiki12.changeField",
+                          "value": "datetime"
+                        }
+                      ],
+                      "Field": {
+                        "fieldType": {
+                          "type": "DateTimeType"
+                        },
+                        "label": [
+                          {
+                            "locale": "en",
+                            "text": "Changed On"
+                          },
+                          {
+                            "locale": "de",
+                            "text": "Geändert am"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "type": "Field",
+                      "id": "F11",
+                      "name": "Summary",
+                      "annotations": [
+                        {
+                          "name": "wiki12.changeField",
+                          "value": "summary"
+                        }
+                      ],
+                      "Field": {
+                        "fieldType": {
+                          "type": "StringType"
+                        },
+                        "label": [
+                          {
+                            "locale": "en",
+                            "text": "Summary"
+                          },
+                          {
+                            "locale": "de",
+                            "text": "Zusammenfassung"
+                          }
+                        ]
+                      }
                     }
                   ]
                 }

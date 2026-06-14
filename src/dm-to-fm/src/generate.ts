@@ -35,11 +35,22 @@ function annotationValue(anns: Annotation[], name: string): string | undefined {
 
 interface GroupWithFields { group: DMElement; fields: DMElement[]; }
 
-// Depth-first walk of the DM; collect each group together with its DIRECT fields.
+// Is this element annotated wiki12.derived (any value)? Derived fields are
+// system-maintained and never editable; derived groups (e.g. the changeLog) are
+// skipped wholesale — neither the group nor its children appear in an edit form.
+function isDerived(el: DMElement): boolean {
+  const anns = (el.annotations as Annotation[] | undefined) ?? [];
+  return anns.some((a) => a.name === "wiki12.derived");
+}
+
+// Depth-first walk of the DM; collect each group together with its DIRECT,
+// non-derived fields. Groups annotated wiki12.derived (the Changes log) are
+// skipped entirely, along with their descendants.
 function collectGroups(rootGroups: DMElement[], exclude: Set<string>): GroupWithFields[] {
   const out: GroupWithFields[] = [];
   function visit(el: DMElement): void {
     if (el.type !== "Group") return;
+    if (isDerived(el)) return; // derived group (changeLog) — not editable
     const detail = el.Group as { elements?: DMElement[] } | undefined;
     const elements = detail?.elements ?? [];
     const fields = elements.filter((c) => c.type === "Field" && !exclude.has(c.name));
@@ -99,13 +110,13 @@ export interface GenerateOptions {
   exclude?: string[];
 }
 
-/** Names of fields carrying a given field-level annotation name=value. */
-function fieldsByAnnotation(dm: DocumentModel, name: string, value: string): string[] {
+/** Names of fields carrying a given field-level annotation name (any value). */
+function fieldsByAnnotationName(dm: DocumentModel, name: string): string[] {
   const out: string[] = [];
   function visit(el: DMElement): void {
     if (el.type === "Field") {
       const anns = (el.annotations as Annotation[] | undefined) ?? [];
-      if (anns.some((a) => a.name === name && a.value === value)) out.push(el.name);
+      if (anns.some((a) => a.name === name)) out.push(el.name);
     }
     const detail = el[el.type] as { elements?: DMElement[] } | undefined;
     for (const child of detail?.elements ?? []) visit(child);
@@ -119,10 +130,11 @@ export function generateFormModel(dm: DocumentModel, opts: GenerateOptions = {})
   const fmId = dmId.replace(/_DM$/, "_FM");
   const anns = dm.header.annotations ?? [];
 
-  // Exclude the internal search blob by default — the field annotated
-  // wiki12.derived=searchText (a generated index field, not for editing).
-  const searchFields = fieldsByAnnotation(dm, "wiki12.derived", "searchText");
-  const exclude = new Set<string>([...(opts.exclude ?? []), ...searchFields]);
+  // Exclude every derived field — slug, searchText, and the standard envelope
+  // (createdOn, title). They are system-maintained, never editable. (The Changes
+  // group, also derived, is skipped wholesale in collectGroups.)
+  const derivedFields = fieldsByAnnotationName(dm, "wiki12.derived");
+  const exclude = new Set<string>([...(opts.exclude ?? []), ...derivedFields]);
 
   const rootGroups = dm.content.modelRoot.rootGroups;
   const groups = collectGroups(rootGroups, exclude);

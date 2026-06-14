@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  * transaction (ADR-0001, findings §1a/§3).
  *
  * <p>This class is the A12 wiring; the actual derivation, the advisory lock, and the
- * collision query live in {@link SlugDerivationService} so they can be reasoned about
+ * collision query live in {@link ContentDerivationService} so they can be reasoned about
  * (and, where the A12 API is stubbed, swapped) independently of the event plumbing.
  *
  * <p>Listener registration follows the documented idiom from
@@ -33,7 +33,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class WikiContentLifecycleListener {
 
-    private final SlugDerivationService slugDerivationService;
+    private final ContentDerivationService contentDerivationService;
 
     /**
      * Before a content document is created: take the advisory lock on the slug text
@@ -45,7 +45,7 @@ public class WikiContentLifecycleListener {
         // VERIFY against the tutorial: getCreatedDocument()/setCreatedDocument(...) are
         // the documented accessors on DocumentBeforeCreateEvent.
         DocumentV2 created = event.getCreatedDocument();
-        SlugDerivationService.Result result = slugDerivationService.deriveForCreate(created);
+        ContentDerivationService.Result result = contentDerivationService.deriveForCreate(created);
         if (result.changed()) {
             event.setCreatedDocument(result.document());
         }
@@ -65,7 +65,7 @@ public class WikiContentLifecycleListener {
         // DocumentBeforeUpdateEvent.
         DocumentV2 updated = event.getUpdatedDocument();
         DocumentV2 persisted = event.getPersistedDocument();
-        SlugDerivationService.Result result = slugDerivationService.deriveForUpdate(updated, persisted);
+        ContentDerivationService.Result result = contentDerivationService.deriveForUpdate(updated, persisted);
         if (result.changed()) {
             event.setUpdatedDocument(result.document());
         }
@@ -75,7 +75,7 @@ public class WikiContentLifecycleListener {
             // A12 may expose this via event metadata, a per-request "notifications"
             // collector bean, or an interceptor on the RPC response. The architecture
             // requires the response to carry old→new (ADR-0001). For now we log it and
-            // expose it via SlugDerivationService.Result so a wiring point exists.
+            // expose it via ContentDerivationService.Result so a wiring point exists.
             log.info("Slug renamed for {}: {} -> {}",
                     safeModelId(updated), result.oldSlug(), result.newSlug());
         }

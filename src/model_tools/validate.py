@@ -175,6 +175,49 @@ def validate(path, allowed_versions):
         errs.append("no searchable markdown field (StringType + lineBreaksPermitted) — "
                     "page needs a 'body', entities a 'description' (domain.md §Markdown)")
 
+    # --- wiki12 standard content envelope ---
+    # Every content model MUST carry the envelope (specs/changes/mandatory-content-fields,
+    # domain.md §Content Envelope): a derived CreatedOn (DateTimeType), a derived
+    # repeatable changeLog Group with datetime+summary change fields, and a Title —
+    # either an authored field named "Title" or a wiki12.derived=title field.
+    created_on = [n for role, n in derived_roles if role == "createdOn"]
+    if len(created_on) != 1:
+        errs.append(f"envelope: expected exactly one field with wiki12.derived=createdOn, "
+                    f"found {created_on}")
+    title_present = any(role == "title" for role, _ in derived_roles)
+    change_groups = []
+    for r in roots:
+        if r.get("type") != "Group":
+            continue
+        for e in walk(r.get("Group", {}).get("elements", [])):
+            if e.get("type") == "Field" and e.get("name") == "Title":
+                title_present = True
+            if e.get("type") == "Group":
+                role = next((a.get("value") for a in e.get("annotations", [])
+                             if a.get("name") == "wiki12.derived"), None)
+                if role == "changeLog":
+                    change_groups.append(e)
+    if not title_present:
+        errs.append("envelope: no Title — every content item needs a field named 'Title' "
+                    "(authored) or a field with wiki12.derived=title")
+    if len(change_groups) != 1:
+        errs.append(f"envelope: expected exactly one repeatable group with "
+                    f"wiki12.derived=changeLog (the Changes log), found {len(change_groups)}")
+    else:
+        gd = change_groups[0].get("Group", {})
+        rep = gd.get("repeatability")
+        if not (isinstance(rep, int) and rep > 1):
+            errs.append("envelope: changeLog group must be repeatable (repeatability > 1)")
+        change_fields = {
+            next((a.get("value") for a in ce.get("annotations", [])
+                  if a.get("name") == "wiki12.changeField"), None): ce.get("name")
+            for ce in gd.get("elements", []) if ce.get("type") == "Field"
+        }
+        for need in ("datetime", "summary"):
+            if need not in change_fields:
+                errs.append(f"envelope: changeLog group missing a field with "
+                            f"wiki12.changeField={need}")
+
     return errs, warns
 
 

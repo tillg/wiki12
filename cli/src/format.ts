@@ -34,3 +34,20 @@ export function formatHit(hit: SearchHit): string {
   const snippet = hit.snippet ? `  ${hit.snippet}` : "";
   return `[${hit.kind}:${hit.type}] ${hit.slug}  ${title}${snippet}`;
 }
+
+// ---- read output: ALWAYS the A12 document, as JSON -------------------------
+// The CLI's data format for a content read is the A12 document itself (never a
+// human-formatted view). GET_DOCUMENT returns { document: <A12 doc> }; we unwrap
+// to the document so the CLI emits the A12 document verbatim — including the
+// standard envelope fields (Title, Slug, CreatedOn, the Changes log) the Data
+// Service derives. Scriptable and round-trippable.
+export function a12Document(item: unknown): unknown {
+  if (item && typeof item === "object" && "document" in item) {
+    return (item as { document: unknown }).document;
+  }
+  return item;
+}
+
+export function formatDocument(item: unknown): string {
+  return JSON.stringify(a12Document(item), null, 2);
+}

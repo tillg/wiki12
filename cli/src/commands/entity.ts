@@ -17,7 +17,7 @@
 // the flat --field pairs are wrapped before the write.
 
 import { parseArgs } from "../args.ts";
-import { collectFields, formatHit } from "../format.ts";
+import { collectFields, formatDocument, formatHit } from "../format.ts";
 import { HELP } from "../help.ts";
 import { modelName, rootGroup } from "../model-name.ts";
 import { resolveDocRef } from "../resolve.ts";
@@ -119,7 +119,9 @@ export async function runEntity(
       if (!ref) return missingRef(err, type);
       const docRef = await resolveDocRef(rpc, type, ref);
       const item = await rpc.call<ContentItem>(OP_READ, { docRef });
-      out(JSON.stringify(item, null, 2));
+      // The CLI ALWAYS returns the A12 document as its data format (envelope
+      // fields — Title/Slug/CreatedOn/Changes — included). See CLAUDE.md.
+      out(formatDocument(item));
       return 0;
     }
 

@@ -152,6 +152,25 @@ shape was not confirmable offline. Grep the source for `VERIFY` to find each in 
    `SlugDerivationService.readConfig` is correct in shape but these three helpers are
    stubbed and must be wired to the real kernel model API.
 
+### Standard content envelope (`specs/changes/mandatory-content-fields`)
+
+`SlugDerivationService` now also derives the envelope (`CreatedOn`, `Title`, the
+`Changes` log) alongside slug/searchText. Four boundary assumptions, all marked
+`// VERIFY (envelope #N)` in the source:
+
+- **E1. Write clock** (`nowIso`) — whether to prefer a kernel/event transaction
+  timestamp over `Instant.now()`.
+- **E2. Append a repeatable-group repetition** (`appendChangeEntry` /
+  `changeEntryCount`) — whether `putFieldValue` on an indexed path
+  `"/Changes[N]/Field"` auto-creates the Nth repetition, or a dedicated
+  add-repetition API is needed; and how to read the current repetition count.
+  Until wired, `changeEntryCount` returns 0, so updates overwrite entry 0 rather
+  than append.
+- **E3. `DateTimeType` wire format** — the exact ISO string A12 stores/returns for
+  a `DateTimeType` value (also affects the client formatter and the migration backfill).
+- **E4. Field label read** (`fieldLabel`) — the localized-label accessor on
+  `IField`; currently falls back to `getName()`.
+
 ### Query API
 
 10. `QueryRoot.builder()` with `targetDocumentModel` / `projectionName("document")` /

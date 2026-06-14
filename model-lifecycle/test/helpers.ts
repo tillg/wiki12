@@ -20,6 +20,26 @@ export function personDM(version = 1): DocumentModel {
   return dm;
 }
 
+/** A Person DM with the standard envelope removed (CreatedOn, derived Title, Changes group). */
+export function personDMNoEnvelope(version = 2): DocumentModel {
+  const dm = personDM(version);
+  type El = { type: string; annotations?: { name: string; value: string }[] };
+  const root = dm.content.modelRoot.rootGroups[0] as unknown as { Group: { elements: El[] } };
+  root.Group.elements = root.Group.elements.filter((e) => {
+    const derived = e.annotations?.find((a) => a.name === "wiki12.derived")?.value;
+    if (e.type === "Group" && derived === "changeLog") return false; // drop Changes group
+    if (derived === "createdOn" || derived === "title") return false; // drop CreatedOn + derived Title
+    return true;
+  });
+  return dm;
+}
+
+/** The envelope v1->v2 migration as a Migration content item (type-agnostic script). */
+export function envelopeMigrationV1to2(targetModel = "Person"): Migration {
+  const script = readFileSync(join(here, "..", "examples", "envelope_v1_to_v2.ts"), "utf8");
+  return { id: `${targetModel}:1-2`, targetModel, fromVersion: 1, toVersion: 2, script };
+}
+
 /** The worked-example person v1->v2 migration as a Migration content item. */
 export function personMigrationV1to2(): Migration {
   const script = readFileSync(join(here, "..", "examples", "person_v1_to_v2.ts"), "utf8");

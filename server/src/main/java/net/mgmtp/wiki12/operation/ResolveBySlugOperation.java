@@ -43,7 +43,7 @@ public class ResolveBySlugOperation {
      * The derived slug field path on every wiki12 content model.
      * VERIFY: per-model the slug field path could differ; the sample models all use
      * {@code /<Type>/Slug}. A cleaner design reads the {@code wiki12.derived="slug"}
-     * field path from the model (as SlugDerivationService does). Hardcoded common path
+     * field path from the model (as ContentDerivationService does). Hardcoded common path
      * here for the baseline.
      */
     private static final String DEFAULT_SLUG_FIELD_PATH = "/Page/Slug";
