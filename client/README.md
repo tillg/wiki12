@@ -61,13 +61,17 @@ unit tests run in isolation and need none of them.
 
 ## App surface
 
-- **Browse** (`/`) — the landing view, built on the A12 **Managed Master-Detail**
-  widget (`@com.mgmtp.a12.widgets/widgets-core/lib/layout/master-detail`). Master
-  pane = a live keystroke filter box + a responsive `CardGrid` of `ContentCard`s
-  for **all** content (recency-sorted, newest-changed first); detail pane =
-  `ContentDetailView` (read-only, all fields) with the widget's native
-  **full-size** toggle. Responsive: a single view at a time on narrow screens.
-  Replaces the old submit-button `SearchPage` (deleted) as home.
+- **Browse** (`/`) — the landing view: a **full-width, multi-column** responsive
+  `CardGrid` of `ContentCard`s for **all** content (recency-sorted, newest-changed
+  first) with a live keystroke filter box. Clicking a card reflows the grid and
+  opens a read-only detail panel (`ContentDetailView`, all fields) on the right,
+  with **Close** and **Full size** controls (full size hides the grid). Replaces
+  the old submit-button `SearchPage` (deleted) as home.
+  > Implemented as a hand-rolled responsive flex split, **not** the A12 Managed
+  > Master-Detail widget the spec named: that widget manages a single active view
+  > and can't show a full-width grid with no detail pane (and threw on a
+  > variable-length `views` list). The split gives the required "full-width grid
+  > until a card is opened" behavior directly.
 - **View** (`/view/:ref`) — fetches by ref (id-or-slug, resolved via
   `ResolveBySlug`) and delegates to `ContentDetailView`, so it renders identically
   to the Browse detail pane (markdown via `react-markdown` + GFM). Keeps an Edit
@@ -138,8 +142,8 @@ src/
   components/ FormEngineHost.tsx (non-Redux bootstrap), Ui.tsx (chip/banner/dialog),
               ContentCard.tsx (on A12 Card), CardGrid.tsx, ContentDetailView.tsx
   widgets/    MilkdownEditor.tsx, markdownWidgetMap.tsx
-  pages/      BrowsePage (landing '/', A12 Managed Master-Detail), ViewPage,
-              EditPage, SystemPage
+  pages/      BrowsePage (landing '/', full-width card grid + right detail panel),
+              ViewPage, EditPage, SystemPage
   lib/        runtimeConfig.ts, modelFields.ts
   *.test.ts   Vitest unit tests (rpc, search, modelFields)
 ```
@@ -199,9 +203,9 @@ for `VERIFY` to find them in context.
 8. **A12 package versions**. Pinned to `^38.0.0` per the Widgets Quick Start
    (`widgets-core ^38`); confirm the form-engine / kernel / utils versions line up
    on the registry.
-9. **A12 Managed Master-Detail runtime behavior** (`pages/BrowsePage.tsx`). That
-   the detail's full-size toggle expands it to the whole viewport and the
-   responsive breakpoint collapses to a single view on narrow screens — confirmed
-   working in a **manual browser check against the live stack**; left as a VERIFY
-   pending an automated regression for the widget's runtime behavior.
+9. ~~A12 Managed Master-Detail runtime behavior~~ — **resolved/removed.** The
+   gallery does **not** use the Master-Detail widget; `BrowsePage` is a hand-rolled
+   responsive flex split (full-width grid → right detail panel on select, with a
+   full-size toggle), verified working in a manual browser check against the live
+   stack. No widget-runtime VERIFY remains for it.
 ```
