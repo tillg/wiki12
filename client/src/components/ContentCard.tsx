@@ -69,9 +69,10 @@ export function ContentCard(props: {
         <Card.Content style={contentStyle}>
           {dates && <div style={dateLineStyle}>{dates}</div>}
           <div style={titleStyle}>{item.title}</div>
+          {/* The spec's four card slots are: date line · Title · Type · preview.
+              Type only (no kind chip) — domain.md §Content Card. */}
           <div>
             <Chip tone="type">{item.type}</Chip>
-            <Chip tone="kind">{item.kind}</Chip>
           </div>
           {item.snippet && <div style={snippetStyle}>{item.snippet}</div>}
         </Card.Content>
