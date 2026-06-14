@@ -46,10 +46,12 @@ wiki12 migrate <type> --from <v> --to <v> [--dry-run]
 
 - **Pages**: Login, Browse (landing `/`), View (`/view/:ref`, read-only render),
   Edit (create/update via the A12 Form Engine + Milkdown editor), System.
-- **Browse** is the landing view, built on the A12 **Managed Master-Detail**
-  widget: a master pane (live keystroke filter + a responsive card grid of all
-  content, newest-changed first) and a read-only detail pane (all fields) with a
-  native **full-size** toggle; responsive to a single view on narrow screens.
+- **Browse** is the landing view: a **full-width, multi-column** responsive card
+  grid of all content (newest-changed first) with a live keystroke filter. Opening
+  a card reflows the grid and shows a read-only detail panel (all fields) on the
+  right, with **Close** and **Full size** controls (full size hides the grid). A
+  hand-rolled responsive split (the A12 Managed Master-Detail widget couldn't show
+  a full-width grid with no detail pane).
   Cards are the listing vocabulary across the client. Single items remain
   deep-linkable at `/view/:ref`.
 - **System area**: a *Users* link out to the Keycloak console and a *Migrations*

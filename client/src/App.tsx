@@ -58,7 +58,7 @@ function Shell(): ReactElement {
       sub={<Sidebar />}
       subExpanded={true}
       content={
-        <div style={{ padding: "1rem", maxWidth: "60rem" }}>
+        <div style={{ padding: "1rem" }}>
           <Routes>
             <Route path="/" element={<BrowsePage />} />
             <Route path="/view/:ref" element={<ViewPage />} />

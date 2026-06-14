@@ -1,5 +1,18 @@
 # Architecture: Content cards & the gallery
 
+> **As-built deviation (§5).** This doc specified the A12 **Managed Master-Detail**
+> widget for the Browse layout. In implementation that widget proved unsuitable: it
+> manages a single "active view", so it cannot render a full-width master grid with
+> **no** detail pane (it reserved half the width for an empty pane), and it threw
+> `view not in list of views` when the `views` array changed length. Per explicit
+> user feedback ("on a wide page it should be multi-column using the entire width;
+> only when a card is clicked should a part on the right show its detail"),
+> `BrowsePage` is instead a **hand-rolled responsive flex split**: a full-width
+> multi-column `CardGrid` until a card is selected, then the grid reflows and a
+> read-only detail panel opens on the right (with Close + Full-size controls). The
+> `ContentCard` (A12 `Card` widget), `CardGrid`, `ContentDetailView`, read model,
+> and sans-serif decisions below are as-built; only the §5 widget changed.
+
 How the Content Card, the Gallery, live filter, the reduced Detail view, and the
 Master-Detail Browse layout (with full-size toggle) are built. Read
 [`proposal.md`](proposal.md) and [`domain.md`](domain.md) first.
