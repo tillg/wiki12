@@ -189,6 +189,25 @@ in DM header annotation `wiki12.version`, what migrations step between).
 | `specs/changes/basic_setup/` | proposal, domain, architecture, plan, findings-a12, DECISIONS, QA-LOG, slug spike |
 | `docs/adr/` | ADRs 0001–0005 |
 
+## Always use A12 Widgets in the web client
+
+**The web client MUST use A12 Widgets (`@com.mgmtp.a12.widgets`) for every UI
+element that has a suitable widget — buttons, text inputs, cards, layout, menus,
+dialogs, badges/chips, etc. — instead of hand-rolling raw HTML (`<button>`,
+`<input>`, `<select>`, …).** A12 widgets give consistent theming, accessibility
+and behavior for free. Before adding any UI element, check the installed
+`client/node_modules/@com.mgmtp.a12.widgets/widgets-core/lib` for an existing
+widget and use it. Only fall back to a raw element (or a deliberate third party
+like the Milkdown markdown editor) when A12 has no equivalent — and say why in a
+short comment.
+
+**Encode meaning, not colors.** Use the widgets' semantic props to convey intent
+— a `Button` is `primary` / `secondary` / `destructive`, a banner/message carries
+its `kind` (`info`/`success`/`error`) — and let the theme pick the colors. Never
+hand-set colors (`background: "#b00"`, red text, …) to signal meaning; that
+bypasses theming and dark-mode and drifts from the design system. Manual styling
+is only for neutral layout (spacing, width), never for semantic state.
+
 ## When something doesn't work: test first, then fix
 
 **Whenever we encounter something that doesn't work — a bug, a broken call, an

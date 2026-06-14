@@ -101,6 +101,30 @@ flowchart LR
 an unknown `type` is ignored (search all). Empty `q` → empty results with a
 "type something to search" hint (mirror `unifiedSearch`'s empty-query guard).
 
+### 4. Browse: inline detail is transient; Full size is the deep link
+
+The Browse landing's detail panel (`BrowsePage.tsx` `DetailPanel`) has a
+`fullSize` toggle ("Full size" / "Split view"). Decision:
+
+- **Inline / split-pane** detail → URL stays `/` (transient in-page selection,
+  not a navigation; nothing to bookmark).
+- **Full size** → `navigate("/view/" + refSegment(slug || id))`. The standalone
+  `ViewPage` already renders the *same* `ContentDetailView` full-width, so "Full
+  size" simply **is** the deep-linkable view. Browser back / closing returns to
+  `/`.
+
+This drops the local `fullSize` boolean for the open case: the toggle becomes a
+route change rather than component state. The split-pane path keeps its current
+local-state behavior.
+
+```mermaid
+flowchart LR
+  CARD["Card click"] -->|inline, URL stays '/'| PANE["Split-pane detail"]
+  PANE -->|"Full size"| NAV["navigate(/view/&lt;slug&gt;)"]
+  NAV --> VP["ViewPage (full-width, deep-linkable)"]
+  VP -->|back / close| BROWSE["Browse '/'"]
+```
+
 ## Sequence: deep link by slug
 
 ```mermaid
@@ -132,7 +156,7 @@ sequenceDiagram
 | `client/src/pages/ViewPage.tsx` | build Edit link via `refSegment`; decode via `refFromParam` |
 | `client/src/pages/EditPage.tsx` | post-save navigate via `refSegment`; decode via `refFromParam` |
 | `client/src/pages/SearchPage.tsx` | **new** — `/search?q=&type=` results |
-| `client/src/pages/BrowsePage.tsx` | card open navigates to `/view/<slug>` (deep link) |
+| `client/src/pages/BrowsePage.tsx` | inline detail keeps URL `/`; **Full size** navigates to `/view/<slug>` (deep link) |
 | `client/src/App.tsx` | add `/search` route; header search box |
 
 ## Testing strategy

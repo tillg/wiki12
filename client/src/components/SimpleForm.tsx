@@ -10,6 +10,7 @@ import type { ReactElement } from "react";
 
 import type { DocModelInfo } from "../lib/docModel.ts";
 import type { ContentDocument } from "../api/content";
+import { TextField, TextAreaStateless } from "@com.mgmtp.a12.widgets/widgets-core/lib/input";
 
 export interface SimpleFormHandle {
   /** Build the server document payload: { <Group>: { field: value, … } }. */
@@ -59,17 +60,15 @@ export function SimpleForm(props: SimpleFormProps): ReactElement {
         <label key={f.name} style={{ display: "grid", gap: "0.25rem" }}>
           <span style={{ fontSize: "0.85rem", color: "#555" }}>{f.label}</span>
           {f.multiline ? (
-            <textarea
+            <TextAreaStateless
               value={values[f.name] ?? ""}
               onChange={(e) => setValues((s) => ({ ...s, [f.name]: e.target.value }))}
-              rows={10}
-              style={{ font: "inherit", padding: "0.5rem", border: "1px solid #ccc", borderRadius: 4 }}
+              inputProps={{ rows: 10 }}
             />
           ) : (
-            <input
+            <TextField
               value={values[f.name] ?? ""}
               onChange={(e) => setValues((s) => ({ ...s, [f.name]: e.target.value }))}
-              style={{ font: "inherit", padding: "0.5rem", border: "1px solid #ccc", borderRadius: 4 }}
             />
           )}
         </label>

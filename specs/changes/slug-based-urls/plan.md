@@ -31,10 +31,11 @@ Test-first per the global convention: each step pairs a change with its verify.
       `/edit/${refSegment(item.slug || item.id)}`.
 - [ ] `EditPage.tsx`: decode param with `refFromParam`; post-save `navigate` to
       `/view/${refSegment(result.item.slug || result.item.id)}` (keep slug-change state).
-- [ ] `BrowsePage.tsx`: opening a card navigates to `/view/${refSegment(slug||id)}`
-      (deep link) — confirm this matches the intended UX vs. the inline detail pane;
-      keep the inline detail pane, add an explicit "open as page" deep link if both
-      are wanted.
+- [ ] `BrowsePage.tsx`: keep the inline split-pane detail as a transient in-page
+      selection (URL stays `/`). Change the **"Full size"** action to
+      `navigate("/view/" + refSegment(slug || id))` (the deep-linkable standalone
+      view) instead of toggling the local `fullSize` boolean for the open case;
+      closing / browser-back returns to `/`.
 - [ ] Verify: `npm run typecheck` clean; existing Vitest suite green.
 
 ## 4. Search route + header search box
@@ -54,6 +55,9 @@ Test-first per the global convention: each step pairs a change with its verify.
 - [ ] Playwright (artifacts → `tmp/`), screenshot each:
   - `/view/page:<slug>` renders; address bar shows the literal colon (not `%3A`).
   - `/edit/<slug>` loads the form; Edit link from view → correct `/edit/<slug>`.
+  - Browse `/`: clicking a card opens the inline split-pane detail with the URL
+    **still `/`**; hitting **Full size** navigates to `/view/<slug>`; back returns
+    to `/`.
   - `/search?q=einstein` shows cards; `&type=person` narrows; card click →
     `/view/<slug>`.
   - A legacy Technical-ID link (`/view/Page_DM%2F<uuid>`) still resolves.
