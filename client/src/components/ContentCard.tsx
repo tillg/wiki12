@@ -65,7 +65,7 @@ export function ContentCard(props: {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
             <div style={titleStyle}>{item.title}</div>
             <span style={{ flexShrink: 0 }}>
-              <Chip tone="type">{item.type}</Chip>
+              <Chip>{item.type}</Chip>
             </span>
           </div>
           {item.snippet && <div style={snippetStyle}>{item.snippet}</div>}

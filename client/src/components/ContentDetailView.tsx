@@ -56,7 +56,7 @@ export function ContentDetailView(props: { item: ContentItem }): ReactElement {
   return (
     <article>
       <div style={{ marginBottom: "0.5rem" }}>
-        <Chip tone="type">{props.item.type}</Chip>
+        <Chip>{props.item.type}</Chip>
       </div>
       <h2 style={{ marginTop: 0, marginBottom: "0.25rem" }}>{titleOf(doc, props.item.slug)}</h2>
       <div style={{ fontFamily: "monospace", color: "#888", fontSize: "0.85rem", marginBottom: "1rem" }}>

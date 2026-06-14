@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 
 import { login } from "../lib/auth.ts";
+import { Banner } from "../components/Ui";
 import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
 import { TextField } from "@com.mgmtp.a12.widgets/widgets-core/lib/input";
 
@@ -65,9 +66,7 @@ export function LoginPage(): ReactElement {
           </div>
         </label>
 
-        {error && (
-          <div style={{ marginTop: "0.75rem", color: "#b00020", fontSize: "0.85rem" }}>{error}</div>
-        )}
+        {error && <Banner kind="error">{error}</Banner>}
 
         <div style={{ marginTop: "1.25rem" }}>
           <Button label={busy ? "Signing in…" : "Sign in"} primary type="submit" disabled={busy} block />
