@@ -57,6 +57,75 @@ do. Binding verification must use real keystrokes + Tab (blur triggers
 | D4 | Stage-0 spike served at `/spike.html` (separate entry) so the working SPA at `/index.html` stays intact until parity. | Plan §0/§9: replace the old client only at parity. |
 | D5 | Edit/View/Delete will need a **custom RequestSelectorMap** (`formEngine.singleDocument.requestSelectorMap`): the platform default adds `locale` to MODIFY/DELETE (wiki12 rejects per B21) and uses a `QUERY exact_match` for load instead of `GET_DOCUMENT`. Stage-0 Create (ADD_DOCUMENT) matches as-is. | Confirmed by reading DefaultRequestSelectorMap + RequestBuilder vs wiki12 contract. |
 
+## Load/Edit path — TESTED, platform provider is INCOMPATIBLE (key finding)
+Loading an existing document via the platform single-document provider **fails**
+against wiki12 (`loadingState: "error"`). Root cause (read from
+`PlatformSingleDocumentDataProvider.js:74`): on load it **hardcodes**
+- a `QUERY` with `constraint: exact_match on /__meta/docRef` (wiki12 reads single
+  docs with `GET_DOCUMENT`, not a docRef query), AND
+- a second batched RPC `loadAllThumbnailURLs` (`LOAD_THUMBNAIL_URLS_INTERNAL`),
+  which wiki12's Data Service does not serve — failing the whole batch.
+It also parses the response as `result.entries[0]`. A custom `RequestSelectorMap`
+**cannot** fix this (the thumbnail RPC + entries-parse are hardcoded outside the
+selector). **Decision (supersedes D5):** for View/Edit/Delete, write a **custom
+single-document `DataProvider`** that reuses wiki12's proven `api/content.ts`
+(`GET_DOCUMENT` / `resolveRef` / `ADD_DOCUMENT` / `MODIFY_DOCUMENT {docRef,document}` /
+`DELETE_DOCUMENT`), applying the form-engine recipe (createEmptyDocument for new;
+`parseDates` + `preProcessDocument` on load; `filterDataByRelevance` + strip
+id/modelId + `formatDates` on save). Compose the form engine WITHOUT the platform
+provider: use the individual `withFormEngine{DataReducers,Middlewares,Sagas,View}`
++ `withConfiguredFormEngine` + `withFormModelSupport` + `addDataHandlers(createEmptyDocumentDataProvider(...), customProvider)`.
+For **Create** only, the platform provider's `ADD_DOCUMENT` is contract-correct
+(proven in Stage 0).
+
+## Custom DataProvider — BUILT & VERIFIED ✅ (Milestone 2)
+`client/src/a12client/wikiSingleDocumentDataProvider.ts` mirrors the platform
+provider's form-engine recipe but routes persistence through wiki12's `api/content.ts`.
+Composed via the individual form-engine features (not bundled `withFormEngine`):
+`withFormEngine{DataReducers,Middlewares,Sagas,View}` + `withConfiguredFormEngine`
++ `withFormModelSupport` + `addDataHandlers(createEmptyDocumentDataProvider(), customProvider)`.
+Verified live against the running stack:
+- **Load existing** (`?instance=Person_DM/<uuid>`): `GET_DOCUMENT` → `parseDates` →
+  `preProcessDocument` → form shows Albert/Einstein, DatePicker re-renders `09/29/1967`. `loadingState: "loaded"`.
+- **Edit/save**: `MODIFY_DOCUMENT {docRef, document}` — **no `locale`** (B21 satisfied),
+  BirthDate serialized `1967-09-29`, Nationality added → 200, `savingState: "saved"`.
+- **Create/save** (Stage 0): `ADD_DOCUMENT` → server Technical ID.
+- Delete uses the same `deleteDocument` (`DELETE_DOCUMENT {docRef}`, no locale) — wired, not yet click-tested.
+
+So Create + Load + Edit round-trip through the Form Engine inside the Client all
+work against wiki12's real contract. View (read-only) reuses the same load path.
+
+## Session scope decision (autonomous)
+A full from-scratch A12 Client rebuild replacing the entire React-Router SPA
+(Browse, Search, View, Edit, Delete, System, global chrome, deep linking) verified
+screen-by-screen is a multi-session effort (the plan itself stages it on a branch
+"verified screen-by-screen before replacing the current client"). In this session I:
+- **Proved the gate (Stage 0)** — the explicit go/no-go for the whole change. PASS.
+- Produced complete, code-level **research findings** (RESEARCH-FINDINGS.md).
+- **De-risked** the architecture (adopt-in-place), the working app recipe, and the
+  load/save contract gaps (custom DataProvider needed).
+Per CLAUDE.md's verify-before-done discipline, I did not dump unverified code for the
+remaining stages. The roadmap below is now low-risk and precisely specified.
+
+## Remaining roadmap (de-risked; next sessions)
+1. **Custom single-document DataProvider** (keystone — unblocks View/Edit/Delete).
+   Reuse `api/content.ts`; recipe above. Verify load round-trip + MODIFY (no locale) + DELETE.
+2. **Promote spike → real app**: full Application Model with Browse/View/Create/Edit/
+   Search/System scenes; mount from `main.tsx` behind the working SPA until parity.
+3. **Browse**: custom Overview view component + DataLoader using `listAllContent`/
+   `sortByRecency`/`dedupeCards` (no overview-engine package installed).
+4. **Global chrome**: header views (brand, New `PopUpMenu` dropdown over served models,
+   live search box) + sidebar (Browse, System) in header/sidebar regions.
+5. **Search**: custom overview over `unifiedSearch`; ≥3-char guard + live `liveSearch`.
+6. **Deep linking**: Client deep-linking is NOT a router — needs a custom
+   `DeepLinkCoder`/`locationManager` mapping `/view/:ref`,`/edit/:ref`,`/search?q=` ↔
+   activity descriptors (resolve slugs via `ResolveBySlug`). Biggest remaining unknown.
+7. **Markdown**: re-enable `markdownWidgetMap`/`markdownFormModelMap` for Description/Body; verify.
+8. **System** page (migrations via model-lifecycle HTTP).
+9. **Retire** SimpleForm/docModel/FormEngineHost/old App.tsx+pages; **ADR**; update
+   CLAUDE.md/README/functional.md; `just build` the client image.
+
 ## Open questions deferred (decided autonomously)
-- Markdown widget map temporarily disabled in the spike to isolate binding; must be
-  re-enabled and verified for the Description/Body field in Stage 5.
+- Markdown widget map temporarily disabled in the spike to isolate binding; re-enable in step 7.
+- Spike keeps a dev-only Redux action logger (window.__actions/__fullActions) and a
+  `?instance=` param + `__save()` helper — harmless dev aids on the /spike.html entry only.

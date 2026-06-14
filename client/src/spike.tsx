@@ -34,12 +34,14 @@ async function bootstrap(): Promise<void> {
 
   await initialActions();
 
-  // Start the Create-Person activity. The descriptor matches the "Create Person"
-  // scene (model=Person), which fires VIEW_ADD "FormEngine" + loads Person_FM/_DM.
+  // Start a Person form activity. `?instance=<docRef>` loads an existing document
+  // (tests the load/edit path); default is a new document (Create).
+  const instance =
+    new URLSearchParams(window.location.search).get("instance") ?? "__NEW__";
   store.dispatch(
     ActivityActions.create({
       activityId: "create-person",
-      activityDescriptor: { model: "Person", instance: "__NEW__" },
+      activityDescriptor: { model: "Person", instance },
     }),
   );
 

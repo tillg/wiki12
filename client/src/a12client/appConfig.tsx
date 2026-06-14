@@ -15,12 +15,22 @@ import {
   type A12ApplicationConfig,
   type BaseConfig,
 } from "@com.mgmtp.a12.client/client-core";
+import { addDataHandlers } from "@com.mgmtp.a12.client/client-core";
 import { withPlatformModelLoader } from "@com.mgmtp.a12.client/client-core/modelLoader";
 import { withLocalization } from "@com.mgmtp.a12.client/client-core/localization";
-import { withFormEngine } from "@com.mgmtp.a12.formengine/formengine-core";
+import {
+  createEmptyDocumentDataProvider,
+  withConfiguredFormEngine,
+  withFormEngineDataReducers,
+  withFormEngineMiddlewares,
+  withFormEngineSagas,
+  withFormEngineView,
+  withFormModelSupport,
+} from "@com.mgmtp.a12.formengine/formengine-core";
 
 import { markdownFormModelMap, markdownWidgetMap } from "../widgets/markdownWidgetMap";
 import { appModel } from "./appModel";
+import { createWikiSingleDocumentDataProvider } from "./wikiSingleDocumentDataProvider";
 
 export function createWiki12Client() {
   // SPIKE diagnostics: record every dispatched action type on window.__actions
@@ -61,15 +71,29 @@ export function createWiki12Client() {
   void markdownWidgetMap;
   void markdownFormModelMap;
 
-  // Order is type-enforced: withFormEngine requires that NEITHER `formEngine`
-  // nor `modelLoader` is configured yet, so it must come first; localization,
-  // model and the model loader follow. We apply the transformers sequentially
-  // (rather than via combineFeatures) because the `flow`-typed combinator can't
-  // infer through these heavily-generic feature signatures.
-  const withFe = withFormEngine(initialConfig);
-  const withLoc = withLocalization(withFe);
-  const withMdl = withModel(appModel)(withLoc);
-  const finalConfig = withPlatformModelLoader(withMdl);
+  // We compose the form engine from its individual features (NOT the bundled
+  // `withFormEngine`) so we can swap the platform single-document provider for
+  // wiki12's custom one (see wikiSingleDocumentDataProvider.ts). createEmptyDocument
+  // still handles __NEW__ load; our provider handles load-existing/save/delete.
+  // Order is type-enforced: these features require neither `formEngine` nor
+  // `modelLoader` configured, so they precede the model + loader. Applied
+  // sequentially because the `flow`-typed combinator can't infer through the
+  // heavily-generic feature signatures.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cfg: any = initialConfig;
+  cfg = withFormEngineDataReducers(cfg);
+  cfg = withFormEngineMiddlewares(cfg);
+  cfg = withFormEngineSagas(cfg);
+  cfg = withFormEngineView(cfg);
+  cfg = withConfiguredFormEngine(cfg);
+  cfg = withFormModelSupport(cfg);
+  cfg = addDataHandlers(
+    createEmptyDocumentDataProvider(initialConfig.formEngine?.emptyDocument),
+    createWikiSingleDocumentDataProvider(),
+  )(cfg);
+  cfg = withLocalization(cfg);
+  cfg = withModel(appModel)(cfg);
+  cfg = withPlatformModelLoader(cfg);
 
-  return createA12ApplicationSetup(finalConfig);
+  return createA12ApplicationSetup(cfg);
 }
