@@ -10,8 +10,8 @@ independent of implementation. See [`domain.md`](domain.md) for terms and
 
 | Feature | Who | Behavior |
 |---|---|---|
-| **Search** | Reader | Unified search across all content (Pages + every Entity Type); optional `kind` (page/entity) and `type` filters. Returns typed hits (kind, type, id, slug, title, snippet). |
-| **Read** | Reader | View a Page/Entity by Technical ID or slug; markdown body rendered. |
+| **Browse** | Reader | The landing surface (web): a recency-sorted card grid of **all** content (Pages + every Entity Type), with a live keystroke filter (no submit). Clicking a card opens a **read-only** detail of all its fields, with a **full-size** toggle. (CLI: unified search across all content; optional `kind` (page/entity) and `type` filters; returns typed hits.) |
+| **Read** | Reader | View a Page/Entity by Technical ID or slug; all fields rendered read-only (markdown body rendered), same render as the Browse detail pane. Deep-linkable at `/view/:ref`. |
 | **Create** | Editor | Create a Page or typed Entity from a model-driven form; server assigns the Technical ID and derives the slug. |
 | **Edit** | Editor | Update fields; a Key-Field change can re-derive the slug (surfaced as old → new). |
 | **Delete** | Editor | Remove a Page/Entity by ref (idempotent server-side). |
@@ -44,8 +44,14 @@ wiki12 migrate <type> --from <v> --to <v> [--dry-run]
 
 ### Web client surface
 
-- **Pages**: Login, Search, View (markdown render), Edit (create/update via the
-  A12 Form Engine + Milkdown editor), System.
+- **Pages**: Login, Browse (landing `/`), View (`/view/:ref`, read-only render),
+  Edit (create/update via the A12 Form Engine + Milkdown editor), System.
+- **Browse** is the landing view, built on the A12 **Managed Master-Detail**
+  widget: a master pane (live keystroke filter + a responsive card grid of all
+  content, newest-changed first) and a read-only detail pane (all fields) with a
+  native **full-size** toggle; responsive to a single view on narrow screens.
+  Cards are the listing vocabulary across the client. Single items remain
+  deep-linkable at `/view/:ref`.
 - **System area**: a *Users* link out to the Keycloak console and a *Migrations*
   list — each `Migration` editable as its TS source in a simple text editor
   (upload is TS source only; the service owns transpile + sandboxed execution).

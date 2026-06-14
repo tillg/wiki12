@@ -18,7 +18,7 @@ export type ContentKind = "page" | "entity";
 // The content models to fan out over (page + entity types). The architecture's
 // server-side UnifiedSearch op isn't in the stock server (QA-LOG B8/B10), so the
 // client does the batched fan-out itself: one stock simple_search QUERY per model.
-const CONTENT_MODELS: { model: string; type: string; kind: ContentKind }[] = [
+export const CONTENT_MODELS: { model: string; type: string; kind: ContentKind }[] = [
   { model: "Page_DM", type: "page", kind: "page" },
   { model: "Person_DM", type: "person", kind: "entity" },
   { model: "Film_DM", type: "film", kind: "entity" },
@@ -36,7 +36,27 @@ function rootFields(document: Record<string, unknown>): Record<string, unknown> 
   return key ? (document[key] as Record<string, unknown>) : {};
 }
 
-function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }): RawHit[] {
+/** A string field value, or undefined if absent/empty. */
+function isoOrUndef(v: unknown): string | undefined {
+  return typeof v === "string" && v ? v : undefined;
+}
+
+/**
+ * Last-modification instant: the newest ChangedOn across the append-only Changes
+ * group (ISO strings compare chronologically), falling back to CreatedOn, else
+ * undefined. The Changes group is a JSON array of { ChangedOn, Summary } (A12 contract).
+ */
+export function lastChangedOf(f: Record<string, unknown>, createdOn?: string): string | undefined {
+  const changes = Array.isArray(f.Changes) ? (f.Changes as Record<string, unknown>[]) : [];
+  let max: string | undefined;
+  for (const c of changes) {
+    const t = isoOrUndef(c?.ChangedOn);
+    if (t && (!max || t > max)) max = t;
+  }
+  return max ?? createdOn;
+}
+
+function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }): ContentCardData[] {
   if (result instanceof RpcCallError || !result) return [];
   const entries = (result as { entries?: QueryEntry[] }).entries ?? [];
   return entries.map((e) => {
@@ -44,6 +64,7 @@ function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }):
     const name = [f.FirstName, f.LastName].filter(Boolean).join(" ");
     const title = String(f.Title ?? f.Name ?? (name || "") ?? "");
     const body = String(f.Body ?? f.Description ?? "");
+    const createdOn = isoOrUndef(f.CreatedOn);
     return {
       kind: m.kind,
       type: m.type,
@@ -51,6 +72,8 @@ function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }):
       slug: e.docRef,
       title,
       snippet: body.replace(/[#*`>\n]/g, " ").trim().slice(0, 140),
+      createdOn,
+      lastChangedOn: lastChangedOf(f, createdOn),
     };
   });
 }
@@ -62,6 +85,12 @@ export interface SearchHit {
   slug: string; // namespaced slug, e.g. "person:till_gartner"
   title: string;
   snippet: string;
+}
+
+/** A SearchHit enriched with the envelope timestamps, for gallery cards. */
+export interface ContentCardData extends SearchHit {
+  createdOn?: string; // CreatedOn (DateTimeType ISO string)
+  lastChangedOn?: string; // max(Changes[].ChangedOn) ?? createdOn
 }
 
 export interface SearchParams {
@@ -138,6 +167,76 @@ export async function unifiedSearch(params: SearchParams): Promise<SearchHit[]> 
   }));
   const results = await rpcBatch(batch);
   return mergeResults(results.map((res, i) => entriesToHits(res, models[i])));
+}
+
+// ---- Gallery read model: list-all + recency sort + live filter -------------
+
+/** Format an ISO instant as a short display date (YYYY-MM-DD); empty for absent. Pure. */
+export function formatCardDate(iso?: string): string {
+  return iso ? iso.slice(0, 10) : "";
+}
+
+/** De-duplicate cards by slug (else type/id); first wins, order preserved. Pure. */
+export function dedupeCards(cards: ContentCardData[]): ContentCardData[] {
+  const seen = new Set<string>();
+  const out: ContentCardData[] = [];
+  for (const c of cards) {
+    const key = c.slug || `${c.type}/${c.id}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Order cards by last modification, newest first. Cards without a lastChangedOn
+ * sort last; ties (and missing-both) break deterministically by title then slug.
+ * ISO strings compare chronologically. Pure — unit tested.
+ */
+export function sortByRecency(cards: ContentCardData[]): ContentCardData[] {
+  return [...cards].sort((a, b) => {
+    const ta = a.lastChangedOn;
+    const tb = b.lastChangedOn;
+    if (ta && tb && ta !== tb) return tb.localeCompare(ta); // newest first
+    if (ta && !tb) return -1; // missing sorts last
+    if (!ta && tb) return 1;
+    return (a.title || a.slug).localeCompare(b.title || b.slug); // deterministic tie-break
+  });
+}
+
+/** Live filter: case-insensitive substring over title + snippet; empty query = all. Pure. */
+export function filterCards(cards: ContentCardData[], query: string): ContentCardData[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return cards;
+  return cards.filter((c) => `${c.title} ${c.snippet}`.toLowerCase().includes(q));
+}
+
+/**
+ * List ALL content as gallery cards, newest-changed first. Same client-side
+ * batched fan-out as unifiedSearch but with a constraint-free (list-all) QUERY per
+ * model (A12: omitting `constraint` returns every document), biased recent via a
+ * per-model CreatedOn DESC sort; authoritative cross-model ordering is sortByRecency.
+ */
+export async function listAllContent(params: { type?: string; kind?: ContentKind } = {}): Promise<ContentCardData[]> {
+  const models = CONTENT_MODELS.filter(
+    (m) => (!params.type || m.type === params.type) && (!params.kind || m.kind === params.kind),
+  );
+  const batch = models.map((m) => ({
+    method: "QUERY",
+    params: {
+      query: {
+        targetDocumentModel: m.model,
+        projectionName: "document",
+        // constraint omitted → all documents (A12 Query API)
+        sort: [{ field: "CreatedOn", direction: "DESC", nullHandling: "NULLS_LAST", ignoreCase: false }],
+        paging: { pageSize: 100, pageNumber: 0 },
+      },
+    },
+  }));
+  const results = await rpcBatch(batch);
+  const cards = results.flatMap((res, i) => entriesToHits(res, models[i]));
+  return sortByRecency(dedupeCards(cards));
 }
 
 /** Coerce the various plausible server envelopes into RawHit[][]. Pure. */
