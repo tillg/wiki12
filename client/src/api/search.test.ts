@@ -6,11 +6,38 @@ import {
   lastChangedOf,
   mergeResults,
   normalizeHit,
+  resolveTimestamps,
   sortByRecency,
   toLists,
   type ContentCardData,
   type RawHit,
 } from "./search";
+
+describe("resolveTimestamps", () => {
+  it("prefers the envelope CreatedOn + newest Changes", () => {
+    const doc = {
+      Page: { CreatedOn: "2026-06-10T00:00:00Z", Changes: [{ ChangedOn: "2026-06-12T00:00:00Z" }] },
+      __meta: { createdAt: "2020-01-01T00:00:00", modifiedAt: "2020-02-02T00:00:00" },
+    };
+    expect(resolveTimestamps(doc)).toEqual({
+      createdOn: "2026-06-10T00:00:00Z",
+      lastChangedOn: "2026-06-12T00:00:00Z",
+    });
+  });
+  it("falls back to __meta.createdAt/modifiedAt when the envelope is absent", () => {
+    const doc = { Page: { Title: "x" }, __meta: { createdAt: "2026-06-13T07:52:16", modifiedAt: "2026-06-14T08:00:00" } };
+    expect(resolveTimestamps(doc)).toEqual({
+      createdOn: "2026-06-13T07:52:16",
+      lastChangedOn: "2026-06-14T08:00:00",
+    });
+  });
+  it("is empty when neither envelope nor meta timestamps exist", () => {
+    expect(resolveTimestamps({ Page: { Title: "x" } })).toEqual({
+      createdOn: undefined,
+      lastChangedOn: undefined,
+    });
+  });
+});
 
 function cd(over: Partial<ContentCardData> = {}): ContentCardData {
   return { kind: "entity", type: "person", id: "M/1", slug: "person:x", title: "X", snippet: "", ...over };
