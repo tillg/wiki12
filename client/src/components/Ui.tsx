@@ -3,56 +3,40 @@
 import type { ReactElement, ReactNode } from "react";
 
 import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
+import { Icon } from "@com.mgmtp.a12.widgets/widgets-core/lib/icon";
+import { Tag } from "@com.mgmtp.a12.widgets/widgets-core/lib/tag";
+import { MessageBox } from "@com.mgmtp.a12.widgets/widgets-core/lib/message-box";
 
-export function Chip(props: { children: ReactNode; tone?: "kind" | "type" }): ReactElement {
-  const bg = props.tone === "kind" ? "#e6eef7" : "#eef3e6";
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        fontSize: "0.72rem",
-        padding: "0.1rem 0.45rem",
-        borderRadius: 3,
-        background: bg,
-        border: "1px solid #ccc",
-        marginRight: "0.35rem",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {props.children}
-    </span>
-  );
+/** A small content label (e.g. the item's type). Renders the A12 Tag widget so
+ *  styling comes from the theme — no hand-set colors. */
+export function Chip(props: { children: ReactNode }): ReactElement {
+  return <Tag>{props.children}</Tag>;
 }
 
+/** Inline message banner. The `kind` drives the A12 MessageBox `variant`, so the
+ *  theme picks the colors (info/success/error) — meaning is encoded, not painted. */
 export function Banner(props: {
   kind?: "info" | "success" | "error";
   onClose?: () => void;
   children: ReactNode;
 }): ReactElement {
-  const palette = {
-    info: { bg: "#eef3fb", border: "#b9cdec" },
-    success: { bg: "#eef8ef", border: "#bfe0c1" },
-    error: { bg: "#fbeeee", border: "#ecbcbc" },
-  }[props.kind ?? "info"];
   return (
-    <div
-      role="status"
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: "1rem",
-        background: palette.bg,
-        border: `1px solid ${palette.border}`,
-        borderRadius: 3,
-        padding: "0.5rem 0.75rem",
-        margin: "0.5rem 0",
-        fontSize: "0.9rem",
-      }}
-    >
-      <span>{props.children}</span>
-      {props.onClose && <Button label="×" secondary title="Dismiss" onClick={props.onClose} />}
-    </div>
+    <MessageBox
+      variant={props.kind ?? "info"}
+      label={props.children}
+      action={
+        props.onClose && (
+          <Button
+            icon={<Icon>close</Icon>}
+            secondary
+            title="Dismiss"
+            buttonAttributes={{ "aria-label": "Dismiss" }}
+            onClick={props.onClose}
+          />
+        )
+      }
+      style={{ margin: "0.5rem 0" }}
+    />
   );
 }
 
