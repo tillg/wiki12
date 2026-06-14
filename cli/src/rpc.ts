@@ -18,12 +18,27 @@ export function dataServiceUrl(env: NodeJS.ProcessEnv = process.env): string {
   return env.WIKI12_DATA_SERVICE_URL ?? DEFAULT_DATA_SERVICE_URL;
 }
 
-// Default transport: a single POST per call to /api/v2/rpc using fetch.
-export function fetchTransport(baseUrl: string): RpcTransport {
+/** The UAA bearer token to authenticate Data Service calls, from the environment. */
+export function dataServiceToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env.WIKI12_TOKEN || undefined;
+}
+
+// Default transport: a single POST per call to /api/v2/rpc using fetch. When a
+// token is supplied (WIKI12_TOKEN), it is sent as `Authorization: UAABearer <token>`
+// — the same scheme the web client uses (lib/auth) for the auth-enforcing Data Service.
+//
+// A concrete `Accept-Language` is REQUIRED: Node's fetch (undici) otherwise defaults
+// it to `*`, which the Data Service rejects with "unsupported locale: *" on QUERY.
+export function fetchTransport(baseUrl: string, token = dataServiceToken()): RpcTransport {
+  const locale = process.env.WIKI12_LOCALE || "en";
   return async (req: JsonRpcRequest): Promise<JsonRpcResponse> => {
     const res = await fetch(`${baseUrl}/api/v2/rpc`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "Accept-Language": locale,
+        ...(token ? { Authorization: `UAABearer ${token}` } : {}),
+      },
       body: JSON.stringify(req),
     });
     if (!res.ok) {

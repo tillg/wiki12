@@ -61,18 +61,38 @@ function docRefOf(result: unknown): string {
   return "";
 }
 
-// QUERY returns a PagedResultSet. Coerce the plausible envelopes (bare array,
-// { content }, { results }) into a flat row list for `list` output.
-// VERIFY: PagedResultSet envelope key (`content`) and the per-row {slug,id}
-// projection shape against a live QUERY — handled defensively until confirmed.
-function queryRows(rs: unknown): Array<{ slug?: string; id?: string }> {
-  if (Array.isArray(rs)) return rs as Array<{ slug?: string; id?: string }>;
-  if (rs && typeof rs === "object") {
-    const o = rs as { content?: unknown[]; results?: unknown[] };
-    if (Array.isArray(o.content)) return o.content as Array<{ slug?: string; id?: string }>;
-    if (Array.isArray(o.results)) return o.results as Array<{ slug?: string; id?: string }>;
+// QUERY returns a PagedResultSet `{ fullSize, page, entries: [...] }` (confirmed
+// against the live Data Service). Each entry is `{ docRef: "<Model>/<uuid>",
+// document: { <Group>: { ...fields, Slug? }, __meta }, ... }`. Coerce that (and the
+// plausible bare-array / { content } / { results } shapes) into flat `{ slug, id }`
+// rows for `list`: id = the uuid after "/" in the docRef (so `delete <id>` works),
+// slug = the derived Slug field when present, else the docRef.
+export function queryRows(rs: unknown): Array<{ slug?: string; id?: string }> {
+  let rows: unknown[] = [];
+  if (Array.isArray(rs)) {
+    rows = rs;
+  } else if (rs && typeof rs === "object") {
+    const o = rs as { entries?: unknown[]; content?: unknown[]; results?: unknown[] };
+    rows = o.entries ?? o.content ?? o.results ?? [];
   }
-  return [];
+  return rows.map((row) => {
+    if (row && typeof row === "object") {
+      const r = row as { docRef?: string; document?: Record<string, unknown>; slug?: string; id?: string };
+      if (typeof r.docRef === "string") {
+        const slash = r.docRef.indexOf("/");
+        const id = slash >= 0 ? r.docRef.slice(slash + 1) : r.docRef;
+        const group = r.document
+          ? Object.entries(r.document).find(
+              ([k, v]) => k !== "__meta" && v && typeof v === "object" && !Array.isArray(v),
+            )?.[1] as Record<string, unknown> | undefined
+          : undefined;
+        const slug = typeof group?.Slug === "string" ? group.Slug : r.docRef;
+        return { slug, id };
+      }
+      return { slug: r.slug, id: r.id };
+    }
+    return {};
+  });
 }
 
 // Run an entity subcommand. `type` is resolved by the caller (entity reads

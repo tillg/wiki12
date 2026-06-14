@@ -189,6 +189,15 @@ in DM header annotation `wiki12.version`, what migrations step between).
 | `specs/changes/basic_setup/` | proposal, domain, architecture, plan, findings-a12, DECISIONS, QA-LOG, slug spike |
 | `docs/adr/` | ADRs 0001–0005 |
 
+## When something doesn't work: test first, then fix
+
+**Whenever we encounter something that doesn't work — a bug, a broken call, an
+unexpected error — we write a test that reproduces it FIRST (and watch it fail),
+then we fix it (and watch the test pass).** No fix lands without a test that would
+have caught the failure. This turns every breakage into a permanent regression
+guard. (Reinforces the global test-first rule; applies to CLI/web/server/model
+work alike.)
+
 ## Conventions
 
 - **Node components run TypeScript directly** via `node --experimental-strip-types`
