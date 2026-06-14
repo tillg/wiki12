@@ -108,8 +108,10 @@ Per CLAUDE.md's verify-before-done discipline, I did not dump unverified code fo
 remaining stages. The roadmap below is now low-risk and precisely specified.
 
 ## Remaining roadmap (de-risked; next sessions)
-1. **Custom single-document DataProvider** (keystone — unblocks View/Edit/Delete).
-   Reuse `api/content.ts`; recipe above. Verify load round-trip + MODIFY (no locale) + DELETE.
+1. ~~**Custom single-document DataProvider**~~ — **DONE & verified** (Milestone 2).
+   View/Edit/Delete now need only Application-Model scenes + activities, not new
+   data-layer work. (Delete: add a confirm dialog + dispatch the activity remove;
+   read-only View: create the activity with `slices.ui = { readonly: true }`.)
 2. **Promote spike → real app**: full Application Model with Browse/View/Create/Edit/
    Search/System scenes; mount from `main.tsx` behind the working SPA until parity.
 3. **Browse**: custom Overview view component + DataLoader using `listAllContent`/
