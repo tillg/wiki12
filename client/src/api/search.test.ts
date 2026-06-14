@@ -1,18 +1,60 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// unifiedSearch/listAllContent fan out over rpcBatch; stub the transport so the
+// query-guard tests can assert whether the server is hit.
+vi.mock("./rpc", () => ({
+  rpcBatch: vi.fn(async () => []),
+  RpcCallError: class RpcCallError extends Error {},
+}));
+
+import { rpcBatch } from "./rpc";
 import {
   dedupeCards,
-  filterCards,
   formatCardDate,
   formatCardDates,
+  isSearchable,
   lastChangedOf,
   mergeResults,
+  MIN_SEARCH_LENGTH,
   normalizeHit,
   resolveTimestamps,
   sortByRecency,
   toLists,
+  unifiedSearch,
   type ContentCardData,
   type RawHit,
 } from "./search";
+
+const rpcBatchMock = vi.mocked(rpcBatch);
+
+// Regression: searching "ar" returned 0 cards while "arr" returned 5. simple_search
+// (Postgres trigram) rejects a <3-char query as "invalid search data" (-32051) and
+// the whole batch rolls back; the client swallowed the error → misleading empty. The
+// fix guards too-short queries client-side so we never fire an invalid one.
+describe("isSearchable / unifiedSearch min-length guard", () => {
+  it("MIN_SEARCH_LENGTH is 3 (trigram minimum)", () => {
+    expect(MIN_SEARCH_LENGTH).toBe(3);
+  });
+  it("rejects sub-3-char queries, accepts >=3 (trimmed)", () => {
+    expect(isSearchable("ar")).toBe(false);
+    expect(isSearchable(" a ")).toBe(false);
+    expect(isSearchable("arr")).toBe(true);
+    expect(isSearchable("  arr  ")).toBe(true);
+  });
+
+  beforeEach(() => {
+    rpcBatchMock.mockReset();
+    rpcBatchMock.mockResolvedValue([]);
+  });
+  it("does NOT hit the server for a too-short query (was the bug: 'ar' fired + errored)", async () => {
+    expect(await unifiedSearch({ query: "ar" })).toEqual([]);
+    expect(rpcBatchMock).not.toHaveBeenCalled();
+  });
+  it("hits the server for a 3-char query ('arr')", async () => {
+    await unifiedSearch({ query: "arr" });
+    expect(rpcBatchMock).toHaveBeenCalledOnce();
+  });
+});
 
 describe("resolveTimestamps", () => {
   it("prefers the envelope CreatedOn + newest Changes", () => {
@@ -107,21 +149,6 @@ describe("sortByRecency", () => {
     const before = cards.map((c) => c.slug);
     expect(sortByRecency(cards).map((c) => c.title)).toEqual(["Alpha", "Beta"]);
     expect(cards.map((c) => c.slug)).toEqual(before);
-  });
-});
-
-describe("filterCards", () => {
-  const cards = [
-    cd({ slug: "a", title: "Albert Einstein", snippet: "physicist" }),
-    cd({ slug: "b", title: "Berlin", snippet: "capital city" }),
-  ];
-  it("matches case-insensitively over title and snippet", () => {
-    expect(filterCards(cards, "einstein").map((c) => c.slug)).toEqual(["a"]);
-    expect(filterCards(cards, "CITY").map((c) => c.slug)).toEqual(["b"]);
-  });
-  it("returns all for an empty/blank query", () => {
-    expect(filterCards(cards, "")).toHaveLength(2);
-    expect(filterCards(cards, "   ")).toHaveLength(2);
   });
 });
 

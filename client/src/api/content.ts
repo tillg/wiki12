@@ -11,6 +11,7 @@
 // the slug back (and slugChange when it differs).
 
 import { rpc } from "./rpc";
+import { slugOf } from "../lib/envelope";
 
 export interface ContentDocument {
   // The A12 document payload as the kernel returns it. Field names follow the
@@ -62,8 +63,10 @@ export async function getDocument(type: string, id: string): Promise<ContentItem
   const result = await rpc<{ document: ContentDocument; docRef?: string }>("GET_DOCUMENT", {
     docRef: dref,
   });
-  // Real slugs need the extension listener; until then the docRef is the handle.
-  return { type, id, slug: dref, document: result.document };
+  // Surface the real envelope Slug; fall back to the docRef until the server-side
+  // listener derives it (graceful degradation, architecture.md §2).
+  const slug = slugOf(result.document) || dref;
+  return { type, id, slug, document: result.document };
 }
 
 /** Read by id-or-slug (resolve, then GET). */

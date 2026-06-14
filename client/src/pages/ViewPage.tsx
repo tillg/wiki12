@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { Link, useParams } from "react-router-dom";
 import { readByRef, type ContentItem } from "../api/content";
+import { refSegment, refFromParam } from "../lib/refUrl";
 import { Banner } from "../components/Ui";
 import { ContentDetailView } from "../components/ContentDetailView";
 
@@ -17,7 +18,7 @@ export function ViewPage(): ReactElement {
     let active = true;
     setItem(null);
     setError(null);
-    readByRef(decodeURIComponent(ref))
+    readByRef(refFromParam(ref))
       .then((it) => active && setItem(it))
       .catch((e) => active && setError(e instanceof Error ? e.message : String(e)));
     return () => {
@@ -31,7 +32,7 @@ export function ViewPage(): ReactElement {
   return (
     <div>
       <div style={{ marginBottom: "0.75rem" }}>
-        <Link to={`/edit/${encodeURIComponent(item.slug || item.id)}`}>Edit</Link>
+        <Link to={`/edit/${refSegment(item.slug || item.id)}`}>Edit</Link>
       </div>
       <ContentDetailView item={item} />
     </div>

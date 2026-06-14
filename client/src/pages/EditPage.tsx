@@ -11,6 +11,7 @@ import {
   type SlugChange,
 } from "../api/content";
 import { parseDocModel, type DocModelInfo } from "../lib/docModel.ts";
+import { refSegment, refFromParam } from "../lib/refUrl";
 import { SimpleForm, type SimpleFormHandle } from "../components/SimpleForm";
 import { Banner, ConfirmDialog } from "../components/Ui";
 import { Button } from "@com.mgmtp.a12.widgets/widgets-core/lib/button";
@@ -41,7 +42,7 @@ export function EditPage(): ReactElement {
         let resolvedType = type;
         let item: ContentItem | null = null;
         if (!isCreate && ref) {
-          item = await readByRef(decodeURIComponent(ref));
+          item = await readByRef(refFromParam(ref));
           resolvedType = item.type;
           if (active) {
             setExisting(item);
@@ -73,8 +74,11 @@ export function EditPage(): ReactElement {
           : await updateDocument(existing.type, existing.id, document, existing.slug);
 
       if (result.slugChange) setSlugChange(result.slugChange);
-      // Navigate to the saved item's view (by new slug, fallback id).
-      navigate(`/view/${encodeURIComponent(result.item.slug || result.item.id)}`, {
+      // Navigate to the saved item's view. result.item.slug is the docRef today
+      // (writes don't return the derived Slug), so this lands on the docRef view
+      // until the server surfaces the Slug — then it becomes a slug URL with no
+      // further change. refSegment keeps a real slug colon-literal, encodes a docRef.
+      navigate(`/view/${refSegment(result.item.slug || result.item.id)}`, {
         state: { slugChange: result.slugChange },
       });
     } catch (e) {

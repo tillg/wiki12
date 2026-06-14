@@ -23,7 +23,7 @@ present in `client/node_modules/@com.mgmtp.a12.widgets/widgets-core/lib`:
   `Button` in `subToolbar` (or the sub header) that flips it; a matching control
   re-expands. (The built-in `useToggleButton` only shows on ≤767px screens, so we
   drive `subExpanded` ourselves for the desktop `<` affordance.)
-- **Remove `New page`.** Delete that `Sidebar` item entirely (moves to Browse).
+- **Remove `New page`.** Delete that `Sidebar` item entirely (moves to Browse). -> Already done within another story by now.
 
 ```mermaid
 flowchart TB

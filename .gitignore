@@ -34,3 +34,7 @@ __pycache__/
 server/.project
 server/.settings/
 server/.classpath
+
+# Playwright MCP transient artifacts (browser-agent snapshots/console dumps)
+client/.playwright-mcp/
+.playwright-mcp/

@@ -82,11 +82,12 @@ function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }):
     const name = [f.FirstName, f.LastName].filter(Boolean).join(" ");
     const title = String(f.Title ?? f.Name ?? (name || "") ?? "");
     const body = String(f.Body ?? f.Description ?? "");
+    const slug = typeof f.Slug === "string" && f.Slug ? f.Slug : e.docRef;
     return {
       kind: m.kind,
       type: m.type,
-      id: e.docRef, // navigate by docRef (real slugs need the extension listener)
-      slug: e.docRef,
+      id: e.docRef, // technical handle (docRef); slug below falls back to it
+      slug, // real envelope Slug when present, else the docRef (graceful degradation)
       title,
       snippet: body.replace(/[#*`>\n]/g, " ").trim().slice(0, 140),
       ...resolveTimestamps(e.document),
@@ -163,10 +164,24 @@ export function mergeResults(lists: RawHit[][]): SearchHit[] {
   return out;
 }
 
+/**
+ * Minimum query length for `simple_search`. The Data Service's simple_search is
+ * Postgres-trigram-backed, which needs ≥3 characters to form a trigram; a shorter
+ * query is rejected server-side as "invalid search data" (-32051) and rolls back the
+ * whole batch. So a 2-char query like "ar" used to surface as a misleading "0 cards"
+ * while "arr" returned matches. We guard client-side and never fire a too-short one.
+ */
+export const MIN_SEARCH_LENGTH = 3;
+
+/** Is this query long enough for simple_search (≥ MIN_SEARCH_LENGTH, trimmed)? Pure. */
+export function isSearchable(query: string): boolean {
+  return query.trim().length >= MIN_SEARCH_LENGTH;
+}
+
 /** Unified search = client-side batched fan-out (one simple_search QUERY per model). */
 export async function unifiedSearch(params: SearchParams): Promise<SearchHit[]> {
   const query = params.query.trim();
-  if (!query) return [];
+  if (!isSearchable(query)) return [];
   const models = CONTENT_MODELS.filter(
     (m) => (!params.type || m.type === params.type) && (!params.kind || m.kind === params.kind),
   );
@@ -185,7 +200,7 @@ export async function unifiedSearch(params: SearchParams): Promise<SearchHit[]> 
   return mergeResults(results.map((res, i) => entriesToHits(res, models[i])));
 }
 
-// ---- Gallery read model: list-all + recency sort + live filter -------------
+// ---- Gallery read model: list-all + recency sort ---------------------------
 
 /** Format an ISO instant as a short display date (YYYY-MM-DD); empty for absent. Pure. */
 export function formatCardDate(iso?: string): string {
@@ -237,13 +252,6 @@ export function sortByRecency(cards: ContentCardData[]): ContentCardData[] {
     if (!ta && tb) return 1;
     return (a.title || a.slug).localeCompare(b.title || b.slug); // deterministic tie-break
   });
-}
-
-/** Live filter: case-insensitive substring over title + snippet; empty query = all. Pure. */
-export function filterCards(cards: ContentCardData[], query: string): ContentCardData[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return cards;
-  return cards.filter((c) => `${c.title} ${c.snippet}`.toLowerCase().includes(q));
 }
 
 /**

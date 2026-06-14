@@ -63,23 +63,42 @@ unit tests run in isolation and need none of them.
 
 - **Browse** (`/`) — the landing view: a **full-width, multi-column** responsive
   `CardGrid` of `ContentCard`s for **all** content (recency-sorted, newest-changed
-  first) with a live keystroke filter box. Clicking a card reflows the grid and
-  opens a read-only detail panel (`ContentDetailView`, all fields) on the right,
-  with **Close** and **Full size** controls (full size hides the grid). Replaces
-  the old submit-button `SearchPage` (deleted) as home.
+  first) — a pure list-all gallery (searching is the header search box's job).
+  Clicking a card reflows the grid and opens a read-only detail panel
+  (`ContentDetailView`, all fields) on the right, with **Close**, **Edit** and
+  **Full size** controls. Opening the split-pane detail is a transient in-page
+  selection — the URL stays `/`; **Full size** navigates to the deep-linkable
+  standalone `/view/<slug>`.
   > Implemented as a hand-rolled responsive flex split, **not** the A12 Managed
   > Master-Detail widget the spec named: that widget manages a single active view
   > and can't show a full-width grid with no detail pane (and threw on a
   > variable-length `views` list). The split gives the required "full-width grid
   > until a card is opened" behavior directly.
+- **Search** (`/search?q=&type=`) — a shareable cross-model search over
+  `unifiedSearch`, rendering the same `ContentCard`/`CardGrid`. Reads `q`/`type`
+  from `useSearchParams` (unknown `type` ignored → search all). Driven by the single
+  global header search box (`HeaderSearch` in `App.tsx`), which searches **live as
+  you type** (debounced ~250ms → updates `/search?q=`; the first hop pushes one
+  history entry, live keystrokes `replace`; Enter forces it immediately). `SearchPage`
+  re-runs `unifiedSearch` on every `q` change, so results stream in. This is the
+  client's only search affordance — there is no separate Browse filter box.
 - **View** (`/view/:ref`) — fetches by ref (id-or-slug, resolved via
   `ResolveBySlug`) and delegates to `ContentDetailView`, so it renders identically
   to the Browse detail pane (markdown via `react-markdown` + GFM). Keeps an Edit
-  link.
+  link. The `:ref` segment is the **Slug verbatim** (colon-literal, e.g.
+  `/view/page:albert_einstein`); a docRef is percent-encoded. The slug-vs-docRef
+  rule is one pure helper, `src/lib/refUrl.ts` (`isSlug`/`refSegment`/`refFromParam`).
+  Until the server surfaces the envelope `Slug` (`lib/envelope.ts` `slugOf` returns
+  "" then), links fall back to the docRef — graceful degradation, no further client
+  change needed when the server side lands.
 - **Create / Edit** (`/create?type=…`, `/edit/:ref`) — A12 form engine, non-Redux
   bootstrap (`unmarshallFormModel` + `createEmptyDocument` + `createEngineStore` +
   `<EngineConnected/>`). The slug is shown **read-only**. On a save that changes
   the slug, an info banner states `old → new`. **Delete** uses a confirm dialog.
+  Reached via the header **New** button — an A12 `PopUpMenu` (trigger `Button` +
+  `List`) whose items are derived from `CONTENT_MODELS` (one per type: Page, Person,
+  Film, Location), each routing to `/create?type=<Type>`. (Replaced the old single
+  "New page" sidebar entry, which could only ever create a page.)
 - **System** (`/system`) — outbound link to the Keycloak admin console, plus a
   **Migrations** list; each row opens a `<textarea>` editing the migration's TS
   `script` source and PUTs it back. **TS source only** — the lifecycle service
@@ -109,8 +128,7 @@ Alongside `unifiedSearch`, the module exposes the browse read path:
 - **`listAllContent()`** — a constraint-free (list-all) `QUERY` fan-out per content
   model, recency-sorted; runs once on mount and is filtered in memory per keystroke.
 - **`ContentCardData`** — `SearchHit` plus optional `createdOn` / `lastChangedOn`.
-- Pure, unit-tested helpers: `sortByRecency`, `filterCards`, `formatCardDate`,
-  `lastChangedOf`.
+- Pure, unit-tested helpers: `sortByRecency`, `formatCardDate`, `lastChangedOf`.
 
 **List cap (no silent caps):** the gallery lists up to **100 items per content
 model**; the UI states this. Cross-model paging is out of scope.
@@ -156,7 +174,7 @@ src/
   realignment by id (and per-item error handling).
 - `src/api/search.test.ts` — search-result normalization, merge/de-dup across
   per-model lists, tolerant envelope coercion (`toLists`), plus the browse read
-  model: `sortByRecency`, `filterCards`, `formatCardDate`, `lastChangedOf`.
+  model: `sortByRecency`, `formatCardDate`, `lastChangedOf`.
 - `src/lib/modelFields.test.ts` — markdown-body control detection.
 
 A standalone `vitest.config.ts` (no Vite React plugin) is used so the tests run
@@ -181,6 +199,12 @@ for `VERIFY` to find them in context.
    `{byModel}` shapes via `toLists`. Confirm the op's actual return shape.
 4. **CRUD op names + param/result shapes** (`api/content.ts`):
    - `GET_DOCUMENT` param key `docRef` and result envelope (`{document, meta.slug}`).
+   - **Envelope `Slug` location** (`lib/envelope.ts` `slugOf`, consumed by
+     `content.ts getDocument` + `search.ts entriesToHits`). Assumed the derived
+     `Slug` nests in the **model-rooted group** alongside `Title`/`CreatedOn`/
+     `Changes` (same `rootFields` shape those already use). Until the server-side
+     listener surfaces it, `slugOf` returns "" and view/edit/search links fall back
+     to the docRef (graceful degradation). Confirm the field's actual location.
    - `ADD_DOCUMENT` params `{model, document}`; result carrying `id` + derived slug.
    - **`MODIFY_DOCUMENT`** — update op name + `{docRef, document}` params (assumed).
    - **`DELETE_DOCUMENT`** — delete op name + `{docRef}` params (assumed).

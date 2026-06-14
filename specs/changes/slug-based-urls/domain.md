@@ -30,8 +30,10 @@ Technical ID*). The Slug already exists and is canonical — we are giving it a
 
 **Search URL**
 : The shareable client URL for a cross-model search: `/search?q=<query>` with an
-  optional `&type=<type>` filter. Distinct from the Browse landing (`/`), which is
-  a list-all gallery with an in-memory filter, not a search.
+  optional `&type=<type>` filter. Reached via the single global header search box,
+  which searches **live as you type** into this URL. Distinct from the Browse
+  landing (`/`), which is a pure list-all gallery, not a search (it has no filter
+  box of its own).
   _Avoid_: Query page, results route.
 
 **Slug URL ⇄ Slug identity**
@@ -56,9 +58,12 @@ flowchart TD
 ## Actors & interactions
 
 - **Reader** opens/shares a `/view/<slug>` link, or a `/search?q=` link.
-- **Editor** opens `/edit/<slug>`; on saving a Key-Field change, the Slug may
-  change — the client navigates to the **new** slug URL and surfaces `old → new`
-  (existing behavior, CONTEXT.md "the change is surfaced to the user").
+- **Editor** opens `/edit/<slug>`; after save the client navigates to the saved
+  item's view (by **docRef** until the server returns slug info). A Key-Field edit
+  can re-derive the Slug, but `MODIFY_DOCUMENT` returns void — the new Slug surfaces
+  on the **next read**, not from the write response (system architecture.md §Slug
+  derivation; functional.md edge cases). So no `old → new` is shown at save time in
+  this change; surfacing it on save is later work tied to the server write contract.
 
 ## Lifecycle note (why a fallback exists)
 

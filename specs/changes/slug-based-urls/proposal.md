@@ -82,12 +82,36 @@ flowchart LR
 
 ## Expected outcome
 
+**Gating:** slug-based URLs are only *fully realized* once the server surfaces the
+`Slug` envelope field on reads/search **and** `ResolveBySlug`'s row extraction
+lands (today both are stubbed — system architecture.md §"As-built status",
+QA-LOG B8/B10). This change is the **client half**; it is built to degrade
+gracefully and ships independently. So the outcomes split in two:
+
+**Verifiable now (this change, on a current stack):**
+- The view/edit link builder and route decode go through a single pure helper
+  (`refSegment`/`refFromParam`/`isSlug`) — a Slug interpolates colon-literal, a
+  docRef is percent-encoded; round-trips both. (Unit-tested.)
+- `/search?q=einstein` (and `&type=person`) is a shareable search over the
+  existing client-side fan-out (`unifiedSearch`).
+- After create/edit, the client navigates to the saved item's view **by docRef**
+  (`/view/<Model>_DM/<uuid>`). The `old → new` slug-change notification *on save*
+  is **not** part of this change: `MODIFY_DOCUMENT` returns void, so a re-derived
+  Slug only appears on the next read (system architecture.md §Slug derivation;
+  functional.md edge cases). The existing slug-change banner scaffolding stays
+  dormant until the server returns slug info.
+- A deep link by Technical ID still resolves (no broken old links).
+- Browse: opening a card's inline detail keeps the URL at `/`; **Full size**
+  navigates to the standalone view.
+
+**Verifiable once the server surfaces Slug + ResolveBySlug (no further client change):**
 - `/view/page:albert_einstein` and `/edit/person:till_gartner_5` work as
   bookmarkable deep links, with the Slug shown literally in the address bar.
-- `/search?q=einstein` (and `&type=person`) is a shareable search.
-- Editing a Key Field that changes the Slug navigates to the **new** slug URL and
-  surfaces the `old → new` change (the existing slug-change banner).
-- A deep link by Technical ID still resolves (no broken old links).
+- Reads and gallery cards carry the real Slug, so emitted links *are* slug URLs.
+
+> Until then the client emits docRef links and a hand-typed slug URL won't
+> resolve (ResolveBySlug returns not-found) — expected, not a regression. See
+> architecture.md §"Dependency & rollout".
 
 ## Risks / notes
 
@@ -99,7 +123,10 @@ flowchart LR
   is built by raw interpolation. (Decode stays tolerant of legacy `%3A`.)
 - **Dependency on server work.** Real slug URLs only appear once reads/search
   carry the real `Slug`. The fallback keeps the feature shippable before then.
-- **Two distinct interactions on different URLs:** `/` Browse = list-all gallery
-  + in-memory filter (quick narrowing); `/search` = server-side cross-model
-  search (shareable). They are intentionally separate; this change does not merge
-  them.
+- **Single search affordance (revised in implementation):** the proposal first
+  kept two inputs — Browse's in-memory filter *and* a header search box. Having both
+  visible on `/` was rejected in review, so the Browse filter box was **removed**;
+  the header search box is now the only search input and searches **live as you
+  type** (debounced → `/search?q=`). `/` Browse stays a pure list-all gallery and
+  `/search` stays the shareable server-side cross-model search — still distinct
+  *routes*, just one visible search box.

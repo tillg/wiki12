@@ -22,6 +22,14 @@ export function titleOf(document: Record<string, unknown>, fallback = ""): strin
   return String(f.Title ?? f.Name ?? (name || fallback));
 }
 
+/** The envelope Slug ("<type>:<name>"), or "" if absent. This is the single point
+ *  where "real slugs" turn on: until the server-side listener surfaces Slug, this
+ *  returns "" and callers fall back to the docRef (graceful degradation). */
+export function slugOf(document: Record<string, unknown>): string {
+  const v = rootFields(document).Slug;
+  return typeof v === "string" ? v : "";
+}
+
 /** The CreatedOn instant (ISO string), or null if absent. */
 export function createdOnOf(document: Record<string, unknown>): string | null {
   const v = rootFields(document).CreatedOn;

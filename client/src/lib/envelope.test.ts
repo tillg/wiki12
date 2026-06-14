@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changesOf, createdOnOf, rootFields, titleOf } from "./envelope";
+import { changesOf, createdOnOf, rootFields, slugOf, titleOf } from "./envelope";
 
 const personDoc = {
   __meta: { docRef: "Person_DM/pe_1" },
@@ -32,6 +32,15 @@ describe("titleOf", () => {
   it("falls back to Name, then the provided fallback", () => {
     expect(titleOf({ Location: { Name: "Berlin" } })).toBe("Berlin");
     expect(titleOf({ Page: {} }, "page:x")).toBe("page:x");
+  });
+});
+
+describe("slugOf", () => {
+  it("returns the envelope Slug when present", () => {
+    expect(slugOf(personDoc)).toBe("person:ada_lovelace");
+  });
+  it("returns '' when the Slug is absent (drives the docRef fallback)", () => {
+    expect(slugOf({ Page: { Title: "x" } })).toBe("");
   });
 });
 
