@@ -68,11 +68,13 @@ export function ContentCard(props: {
       >
         <Card.Content style={contentStyle}>
           {dates && <div style={dateLineStyle}>{dates}</div>}
-          <div style={titleStyle}>{item.title}</div>
-          {/* The spec's four card slots are: date line · Title · Type · preview.
+          {/* Top row: Title (left) with the Type chip at the right edge.
               Type only (no kind chip) — domain.md §Content Card. */}
-          <div>
-            <Chip tone="type">{item.type}</Chip>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
+            <div style={titleStyle}>{item.title}</div>
+            <span style={{ flexShrink: 0 }}>
+              <Chip tone="type">{item.type}</Chip>
+            </span>
           </div>
           {item.snippet && <div style={snippetStyle}>{item.snippet}</div>}
         </Card.Content>

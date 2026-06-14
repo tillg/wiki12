@@ -56,6 +56,24 @@ export function lastChangedOf(f: Record<string, unknown>, createdOn?: string): s
   return max ?? createdOn;
 }
 
+/**
+ * Resolve a card's timestamps from a document. Prefers the standard envelope
+ * (`CreatedOn`, newest `Changes[].ChangedOn`); falls back to A12's document
+ * metadata (`__meta.createdAt` / `__meta.modifiedAt`) so the date line still shows
+ * on instances created before the envelope shipped. Pure — unit tested.
+ */
+export function resolveTimestamps(document: Record<string, unknown>): {
+  createdOn?: string;
+  lastChangedOn?: string;
+} {
+  const f = rootFields(document);
+  const meta = (document?.__meta ?? {}) as Record<string, unknown>;
+  const createdOn = isoOrUndef(f.CreatedOn) ?? isoOrUndef(meta.createdAt);
+  const changesMax = lastChangedOf(f, undefined); // newest Changes[].ChangedOn, else undefined
+  const lastChangedOn = changesMax ?? isoOrUndef(meta.modifiedAt) ?? createdOn;
+  return { createdOn, lastChangedOn };
+}
+
 function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }): ContentCardData[] {
   if (result instanceof RpcCallError || !result) return [];
   const entries = (result as { entries?: QueryEntry[] }).entries ?? [];
@@ -64,7 +82,6 @@ function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }):
     const name = [f.FirstName, f.LastName].filter(Boolean).join(" ");
     const title = String(f.Title ?? f.Name ?? (name || "") ?? "");
     const body = String(f.Body ?? f.Description ?? "");
-    const createdOn = isoOrUndef(f.CreatedOn);
     return {
       kind: m.kind,
       type: m.type,
@@ -72,8 +89,7 @@ function entriesToHits(result: unknown, m: { type: string; kind: ContentKind }):
       slug: e.docRef,
       title,
       snippet: body.replace(/[#*`>\n]/g, " ").trim().slice(0, 140),
-      createdOn,
-      lastChangedOn: lastChangedOf(f, createdOn),
+      ...resolveTimestamps(e.document),
     };
   });
 }
