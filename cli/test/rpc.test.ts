@@ -1,7 +1,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RpcClient } from "../src/rpc.ts";
+import { fetchTransport, RpcClient } from "../src/rpc.ts";
 import { mockRpc } from "./helpers.ts";
+
+// Regression: Node's fetch (undici) defaults `Accept-Language: *`, which the A12
+// Data Service rejects with "unsupported locale: *". The transport must send a
+// concrete locale, plus the UAABearer Authorization when a token is supplied.
+test("fetchTransport sends a concrete Accept-Language and UAABearer Authorization", async () => {
+  const calls: { url: string; init: { headers: Record<string, string> } }[] = [];
+  const orig = globalThis.fetch;
+  globalThis.fetch = (async (url: unknown, init: unknown) => {
+    calls.push({ url: String(url), init: init as { headers: Record<string, string> } });
+    return { ok: true, json: async () => ({ jsonrpc: "2.0", id: 1, result: {} }) } as unknown as Response;
+  }) as typeof fetch;
+  try {
+    const t = fetchTransport("http://ds.test", "tok123");
+    await t({ jsonrpc: "2.0", id: 1, method: "QUERY", params: {} });
+  } finally {
+    globalThis.fetch = orig;
+  }
+  assert.equal(calls.length, 1);
+  const headers = calls[0].init.headers;
+  assert.equal(headers["Accept-Language"], "en", "must send a concrete locale, not undici's '*'");
+  assert.equal(headers["Authorization"], "UAABearer tok123");
+  assert.equal(calls[0].url, "http://ds.test/api/v2/rpc");
+});
 
 test("buildRequest produces jsonrpc 2.0 with auto-incrementing ids", () => {
   const { transport } = mockRpc();

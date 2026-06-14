@@ -7,6 +7,7 @@ import {
   OP_QUERY,
   OP_READ,
   OP_UNIFIED_SEARCH,
+  queryRows,
   runEntity,
 } from "../src/commands/entity.ts";
 import { runPage } from "../src/commands/page.ts";
@@ -19,6 +20,34 @@ function ctxWith(results = {}) {
   const ctx = { rpc: new RpcClient(transport), out: cap.out, err: cap.err };
   return { ctx, calls, cap };
 }
+
+// ---------------------------------------------------------------------------
+// queryRows: parse the live QUERY PagedResultSet { entries: [...] } envelope.
+// Regression — the CLI previously only understood { content }/{ results } and
+// returned nothing for the real `entries` shape, so `list` showed no rows.
+// ---------------------------------------------------------------------------
+
+test("queryRows extracts id (uuid) + slug from the entries envelope", () => {
+  const rs = {
+    fullSize: 2,
+    page: { pageNumber: 0, pageSize: 100 },
+    entries: [
+      { docRef: "Page_DM/uuid-1", document: { Page: { Title: "A", Slug: "page:a" }, __meta: {} } },
+      { docRef: "Person_DM/uuid-2", document: { Person: { FirstName: "B" }, __meta: {} } },
+    ],
+  };
+  const rows = queryRows(rs);
+  assert.deepEqual(rows, [
+    { slug: "page:a", id: "uuid-1" },
+    { slug: "Person_DM/uuid-2", id: "uuid-2" }, // no Slug field → falls back to docRef
+  ]);
+});
+
+test("queryRows still accepts a bare array and is empty for junk", () => {
+  assert.deepEqual(queryRows([{ slug: "page:x", id: "1" }]), [{ slug: "page:x", id: "1" }]);
+  assert.deepEqual(queryRows(null), []);
+  assert.deepEqual(queryRows({}), []);
+});
 
 // ---------------------------------------------------------------------------
 // create -> ADD_DOCUMENT { documentModelName, locale, document } (validated:
