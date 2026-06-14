@@ -3,6 +3,7 @@ import {
   dedupeCards,
   filterCards,
   formatCardDate,
+  formatCardDates,
   lastChangedOf,
   mergeResults,
   normalizeHit,
@@ -50,6 +51,25 @@ describe("formatCardDate", () => {
   it("is empty for undefined/empty", () => {
     expect(formatCardDate(undefined)).toBe("");
     expect(formatCardDate("")).toBe("");
+  });
+});
+
+describe("formatCardDates (created · edited line)", () => {
+  it("is empty when no timestamps", () => {
+    expect(formatCardDates(undefined, undefined)).toBe("");
+  });
+  it("shows just the created date when nothing changed", () => {
+    expect(formatCardDates("2026-06-14T17:56:17", "2026-06-14T17:56:17")).toBe("2026-06-14");
+    expect(formatCardDates("2026-06-14T17:56:17", undefined)).toBe("2026-06-14");
+  });
+  it("appends the edit TIME when modified later the same day", () => {
+    expect(formatCardDates("2026-06-14T17:56:17", "2026-06-14T18:09:30")).toBe("2026-06-14 · edited 18:09");
+  });
+  it("appends the edit DATE when modified on a different day", () => {
+    expect(formatCardDates("2026-06-13T07:00:00", "2026-06-20T09:30:00")).toBe("2026-06-13 · edited 2026-06-20");
+  });
+  it("falls back to the changed date when there is no created", () => {
+    expect(formatCardDates(undefined, "2026-06-14T18:09:30")).toBe("2026-06-14");
   });
 });
 

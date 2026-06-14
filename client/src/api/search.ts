@@ -192,6 +192,24 @@ export function formatCardDate(iso?: string): string {
   return iso ? iso.slice(0, 10) : "";
 }
 
+/**
+ * The card's "created · edited …" line. Shows the created date, and — when the
+ * item was modified (raw timestamps differ) — appends `· edited <when>`: the TIME
+ * (HH:MM) if the edit was the same calendar day, else the edit DATE. Comparing the
+ * raw ISO (not the date-truncated value) is what surfaces a same-day edit. Pure.
+ */
+export function formatCardDates(createdOn?: string, lastChangedOn?: string): string {
+  const created = formatCardDate(createdOn);
+  const base = created || formatCardDate(lastChangedOn);
+  if (!base) return "";
+  if (createdOn && lastChangedOn && lastChangedOn !== createdOn) {
+    const sameDay = createdOn.slice(0, 10) === lastChangedOn.slice(0, 10);
+    const when = sameDay ? lastChangedOn.slice(11, 16) : lastChangedOn.slice(0, 10);
+    if (when) return `${base} · edited ${when}`;
+  }
+  return base;
+}
+
 /** De-duplicate cards by slug (else type/id); first wins, order preserved. Pure. */
 export function dedupeCards(cards: ContentCardData[]): ContentCardData[] {
   const seen = new Set<string>();

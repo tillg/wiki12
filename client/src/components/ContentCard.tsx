@@ -5,7 +5,7 @@
 import type { CSSProperties, KeyboardEvent, ReactElement } from "react";
 import { Card } from "@com.mgmtp.a12.widgets/widgets-core/lib/card";
 import type { ContentCardData } from "../api/search";
-import { formatCardDate } from "../api/search";
+import { formatCardDates } from "../api/search";
 import { Chip } from "./Ui";
 
 const cardStyle: CSSProperties = {
@@ -43,20 +43,12 @@ const snippetStyle: CSSProperties = {
   overflow: "hidden",
 };
 
-function dateLine(item: ContentCardData): string | null {
-  const created = formatCardDate(item.createdOn);
-  const changed = formatCardDate(item.lastChangedOn);
-  if (!created && !changed) return null;
-  if (created && changed && changed !== created) return `${created} · ${changed}`;
-  return created || changed;
-}
-
 export function ContentCard(props: {
   item: ContentCardData;
   onOpen: (item: ContentCardData) => void;
 }): ReactElement {
   const { item, onOpen } = props;
-  const dates = dateLine(item);
+  const dates = formatCardDates(item.createdOn, item.lastChangedOn);
 
   return (
     <Card style={cardStyle}>
