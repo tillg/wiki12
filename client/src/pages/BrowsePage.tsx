@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
+import { Link } from "react-router-dom";
 import { filterCards, listAllContent, type ContentCardData } from "../api/search";
 import { readByRef, type ContentItem } from "../api/content";
 import { ContentCard } from "../components/ContentCard";
@@ -58,10 +59,13 @@ function DetailPanel({
         alignSelf: "flex-start",
       }}
     >
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
         <button onClick={onClose} style={{ fontSize: "0.8rem", cursor: "pointer" }}>
           ← Close
         </button>
+        <Link to={`/edit/${encodeURIComponent(item.id)}`} style={{ fontSize: "0.8rem" }}>
+          Edit
+        </Link>
         <button onClick={onToggleFullSize} style={{ fontSize: "0.8rem", cursor: "pointer" }}>
           {fullSize ? "Split view" : "Full size"}
         </button>
