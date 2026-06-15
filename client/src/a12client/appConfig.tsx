@@ -15,7 +15,7 @@ import {
   type A12ApplicationConfig,
   type BaseConfig,
 } from "@com.mgmtp.a12.client/client-core";
-import { addDataHandlers } from "@com.mgmtp.a12.client/client-core";
+import { addDataHandlers, addView } from "@com.mgmtp.a12.client/client-core";
 import { withPlatformModelLoader } from "@com.mgmtp.a12.client/client-core/modelLoader";
 import { withLocalization } from "@com.mgmtp.a12.client/client-core/localization";
 import {
@@ -30,6 +30,10 @@ import {
 
 import { markdownFormModelMap, markdownWidgetMap } from "../widgets/markdownWidgetMap";
 import { appModel } from "./appModel";
+import { wiki12LayoutProvider } from "./chrome/AppChrome";
+import { BrowseView } from "./views/BrowseView";
+import { SearchView } from "./views/SearchView";
+import { SystemView } from "./views/SystemView";
 import { createWikiSingleDocumentDataProvider } from "./wikiSingleDocumentDataProvider";
 
 export function createWiki12Client() {
@@ -56,6 +60,9 @@ export function createWiki12Client() {
     // localized labels. Without it, typed values convert to `undefined` and never
     // bind, and field labels render empty.
     locale,
+    // wiki12 chrome is the custom ApplicationFrame layout (header search + New +
+    // sidebar nav). Single frame — the entry renders the Client <Component> directly.
+    layouts: wiki12LayoutProvider,
   };
 
   const initialConfig: A12ApplicationConfig = {
@@ -91,6 +98,10 @@ export function createWiki12Client() {
     createEmptyDocumentDataProvider(initialConfig.formEngine?.emptyDocument),
     createWikiSingleDocumentDataProvider(),
   )(cfg);
+  // Custom (non-form) screen views.
+  cfg = addView("BrowseView", BrowseView as never)(cfg);
+  cfg = addView("SearchView", SearchView as never)(cfg);
+  cfg = addView("SystemView", SystemView as never)(cfg);
   cfg = withLocalization(cfg);
   cfg = withModel(appModel)(cfg);
   cfg = withPlatformModelLoader(cfg);
