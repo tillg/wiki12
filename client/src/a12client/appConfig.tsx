@@ -28,7 +28,6 @@ import {
   withFormModelSupport,
 } from "@com.mgmtp.a12.formengine/formengine-core";
 
-import { markdownFormModelMap, markdownWidgetMap } from "../widgets/markdownWidgetMap";
 import { appModel } from "./appModel";
 import { wiki12LayoutProvider } from "./chrome/AppChrome";
 import { BrowseView } from "./views/BrowseView";
@@ -38,25 +37,9 @@ import { SystemView } from "./views/SystemView";
 import { createWikiSingleDocumentDataProvider } from "./wikiSingleDocumentDataProvider";
 
 export function createWiki12Client() {
-  // SPIKE diagnostics: record every dispatched action type on window.__actions
-  // so the browser test can see whether value-change events reach Redux.
-  const actionLogger =
-    () => (next: (a: unknown) => unknown) => (action: unknown) => {
-      const w = window as unknown as { __actions?: string[]; __fullActions?: unknown[] };
-      (w.__actions ??= []).push((action as { type?: string })?.type ?? "?");
-      try {
-        (w.__fullActions ??= []).push(JSON.parse(JSON.stringify(action)));
-        if (w.__fullActions.length > 12) w.__fullActions.shift();
-      } catch {
-        /* non-serializable */
-      }
-      return next(action);
-    };
-
   const locale = { language: "en", country: "US" };
 
   const baseConfig: BaseConfig = {
-    additionalMiddlewares: [actionLogger as never],
     // Active locale — drives the form engine's value conversion (parseValue) and
     // localized labels. Without it, typed values convert to `undefined` and never
     // bind, and field labels render empty.
@@ -68,16 +51,14 @@ export function createWiki12Client() {
 
   const initialConfig: A12ApplicationConfig = {
     config: baseConfig,
-    // NOTE: markdown widget map temporarily disabled while isolating the binding
-    // spike — re-enable once binding is proven with engine defaults.
+    // The Milkdown markdown widget is applied per-form by FormScreen (viewConfig),
+    // so no global form-engine viewConfig is needed here.
     formEngine: {},
     localization: {
       supportedLocales: [locale],
       addLocaleChooser: "never",
     },
   };
-  void markdownWidgetMap;
-  void markdownFormModelMap;
 
   // We compose the form engine from its individual features (NOT the bundled
   // `withFormEngine`) so we can swap the platform single-document provider for
