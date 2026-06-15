@@ -32,6 +32,7 @@ import { markdownFormModelMap, markdownWidgetMap } from "../widgets/markdownWidg
 import { appModel } from "./appModel";
 import { wiki12LayoutProvider } from "./chrome/AppChrome";
 import { BrowseView } from "./views/BrowseView";
+import { FormScreen } from "./views/FormScreen";
 import { SearchView } from "./views/SearchView";
 import { SystemView } from "./views/SystemView";
 import { createWikiSingleDocumentDataProvider } from "./wikiSingleDocumentDataProvider";
@@ -98,6 +99,9 @@ export function createWiki12Client() {
     createEmptyDocumentDataProvider(initialConfig.formEngine?.emptyDocument),
     createWikiSingleDocumentDataProvider(),
   )(cfg);
+  // Override the default "FormEngine" view with wiki12's FormScreen wrapper
+  // (action bar + read-only handling). Registered after withFormEngineView so it wins.
+  cfg = addView("FormEngine", FormScreen as never)(cfg);
   // Custom (non-form) screen views.
   cfg = addView("BrowseView", BrowseView as never)(cfg);
   cfg = addView("SearchView", SearchView as never)(cfg);

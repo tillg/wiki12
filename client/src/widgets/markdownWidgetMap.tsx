@@ -82,3 +82,20 @@ export const markdownFormModelMap: FormModelMap = {
     ),
   },
 };
+
+// Same as markdownFormModelMap but suppresses the form model's own button panel
+// (Save/Cancel action section): the A12 Client app drives persistence via its own
+// action bar (see a12client/views/FormScreen.tsx), so the model buttons would be
+// redundant and non-functional.
+export const markdownButtonlessFormModelMap: FormModelMap = {
+  ...markdownFormModelMap,
+  ButtonPanel: {
+    ...DefaultFormModelMap.ButtonPanel,
+    component: () => null,
+  },
+  // The engine's default footer Save/Cancel are NavigationButtons; suppress them too.
+  NavigationButton: {
+    ...DefaultFormModelMap.NavigationButton,
+    component: () => null,
+  },
+};
