@@ -95,6 +95,37 @@ Verified live against the running stack:
 So Create + Load + Edit round-trip through the Form Engine inside the Client all
 work against wiki12's real contract. View (read-only) reuses the same load path.
 
+## FULL REBUILD COMPLETE ✅ (continued session)
+After the user said "keep going and build the rest of the client", the entire client
+was built on the A12 Client framework and verified live, screen by screen:
+- **Browse** (`/`) — list-all card gallery (custom view, `listAllContent`). ✅
+- **Search** (`/search?q=`) — live header search → `unifiedSearch`, ≥3-char guard. ✅
+- **View** (`/view/:ref`) — read-only Form Engine (engine `disabled`), Edit/Delete. ✅
+- **Create** (`/create?type=`) — Form Engine; Save → ADD_DOCUMENT → new /view. ✅
+- **Edit** (`/edit/:ref`) — Form Engine load + Save → MODIFY_DOCUMENT. ✅
+- **Delete** — confirm → DELETE_DOCUMENT → Browse (item gone). ✅
+- **System** (`/system`) — Keycloak link + migrations (reuses SystemPage). ✅
+- **Chrome** — custom ApplicationFrame layout: brand, live search, New dropdown,
+  user/logout, sidebar nav. ✅
+- **Deep links** — full page load of `/view/<ref>` resolves via SPA fallback. ✅
+
+**Made the A12 Client the default entry** (`main.tsx`/`index.html`); removed the
+spike/dev entries + diagnostic middleware; **retired** the legacy SPA + hand-rolled
+form path (App.tsx, Browse/View/Edit/SearchPage, SimpleForm, FormEngineHost,
+ContentDetailView, docModel.ts). Kept all reused code (api/*, pure helpers, auth,
+runtimeConfig, Milkdown, LoginPage, SystemPage). **ADR-0007** written; CLAUDE.md,
+client/README.md, functional.md synced. `npm run build` passes; `just build` ships
+the client image (VERSION bumped to 0.1.1).
+
+### Additional autonomous decisions (continued session)
+| # | Decision | Rationale |
+|---|----------|-----------|
+| D6 | Non-form screens (Browse/Search/System) are custom React views doing their own `api/*` fetch, not Overview-Engine-driven. | No overview-engine package is installed; reuses proven helpers + card components. |
+| D7 | Navigation is a hand-rolled URL↔activity layer (`routing.ts`), not the Client deep-linking feature. | Client deep-linking only encodes the latest descriptor in the hash; it is not a path router. wiki12 needs `/view/:ref` etc. |
+| D8 | Chrome is a custom ApplicationFrame **layout** (single frame), not a wrapper around the Client. | Nesting two ApplicationFrames collapsed the layout; the custom layout is the supported single-frame seam. |
+| D9 | FormScreen drives Save/Edit/Delete via its own action bar; the engine's built-in Save/Cancel footer is hidden via scoped CSS and View uses the engine `disabled` Config. | The form engine does not auto-translate its footer buttons into a Client save; the FM has no button panel to override. |
+| D10 | Browse card click navigates straight to standalone `/view` (no in-page split-pane detail, unlike the original screens.md). | Simpler and fully functional; the split-pane can return later as a master/detail scene. Noted in functional.md. |
+
 ## Session scope decision (autonomous)
 A full from-scratch A12 Client rebuild replacing the entire React-Router SPA
 (Browse, Search, View, Edit, Delete, System, global chrome, deep linking) verified
