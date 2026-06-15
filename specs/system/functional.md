@@ -45,18 +45,22 @@ wiki12 migrate <type> --from <v> --to <v> [--dry-run]
 
 ### Web client surface
 
+> The web client runs on the **A12 Client framework** (ADR-0007): screens are
+> Application-Model scenes; Create/View/Edit use the Form Engine inside an Activity
+> (with a custom single-document data provider over the same JSON-RPC ops), and
+> Browse/Search/System are custom views. Routes map to Activity descriptors via a
+> thin URL↔activity layer; deep links resolve through `ResolveBySlug`.
+
 - **Pages**: Login, Browse (landing `/`), Search (`/search?q=&type=`), View
-  (`/view/:ref`, read-only render), Edit (create/update via the A12 Form Engine +
-  Milkdown editor), System.
+  (`/view/:ref`, read-only Form Engine render + Edit/Delete actions), Create
+  (`/create?type=`) / Edit (`/edit/:ref`) via the A12 Form Engine + Milkdown editor,
+  System.
 - **Browse** is the landing view: a **full-width, multi-column** responsive card
   grid of all content (newest-changed first) — a pure list-all gallery (searching
-  is the header search box's job). Opening a card reflows the grid and shows a
-  read-only detail panel (all fields) on the right, with **Close**, **Edit** and
-  **Full size** controls. Opening the split-pane detail is a transient in-page
-  selection — the URL stays `/`; **Full size** navigates to the deep-linkable
-  standalone `/view/<slug>`. A hand-rolled responsive split (the A12 Managed
-  Master-Detail widget couldn't show a full-width grid with no detail pane).
-  Cards are the listing vocabulary across the client. Single items remain
+  is the header search box's job). Clicking a card navigates to the deep-linkable
+  standalone **View** (`/view/<slug>`). (The A12 Client rebuild simplified the prior
+  in-page split-pane detail to a direct View navigation; the split-pane may return
+  as a master/detail scene later.) Cards are the listing vocabulary across the client. Single items remain
   deep-linkable at `/view/:ref`, where the path segment is the **Slug verbatim**
   (colon-literal, e.g. `/view/page:albert_einstein`); a Technical ID is accepted as
   a fallback. The slug-vs-docRef URL rule lives in one pure helper

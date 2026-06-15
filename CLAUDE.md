@@ -61,8 +61,9 @@ points — not by replacing the engines.
 A wiki built on A12. One underlying mechanism — a **content item**
 (`{ type, slug, id, fields }`) — expressed as two vocabularies: **Pages** (the
 built-in `page` type) and **Entities** (user-defined types like `person`,
-`film`, `location`). Three clients over one contract: a React/A12-Widgets web
-client, the `wiki12` CLI, and the A12 Data Service. Read [`CONTEXT.md`](CONTEXT.md)
+`film`, `location`). Three clients over one contract: a web client on the **A12
+Client framework** (React + A12 Widgets/Form Engine; ADR-0007), the `wiki12` CLI,
+and the A12 Data Service. Read [`CONTEXT.md`](CONTEXT.md)
 for the canonical domain language (Content item / Page / Entity / Slug / Technical
 ID / Key Fields / Data Model / Form Model / Migration) — use those terms exactly.
 
@@ -178,7 +179,7 @@ in DM header annotation `wiki12.version`, what migrations step between).
 | Path | What |
 |---|---|
 | `server/` | Java A12 Data Service: slug listener, `ResolveBySlug` + `UnifiedSearch`, `Slugifier`, Dockerfile (the one place using Gradle) |
-| `client/` | React + TS web client on A12 Widgets (search/view/edit/delete, Milkdown markdown editor, System area), nginx |
+| `client/` | React + TS web client on the **A12 Client framework** (`src/a12client/`: appConfig, appModel, routing, views, custom single-document data provider) + A12 Widgets/Form Engine (Browse/Search/View/Create/Edit/Delete, Milkdown markdown editor, System area), nginx. See ADR-0007. |
 | `model-lifecycle/` | Node service: form-model gen + TS migration runner |
 | `cli/` | the `wiki12` CLI (Node/TS) |
 | `models/document-models/`, `models/form-models/` | canonical DMs + generated/explicit FMs |
@@ -237,7 +238,8 @@ work alike.)
   every image is stamped with the single `VERSION` (`WIKI12_VERSION`).
 - **Read the ADRs** (`docs/adr/`) before changing slug/identity (0001),
   A12-extensibility approach (0002), the migration workflow (0003), the
-  one-content-mechanism model (0004), or build/deploy structure (0005).
+  one-content-mechanism model (0004), build/deploy structure (0005), the standard
+  content envelope (0006), or the web client on the A12 Client framework (0007).
 
 ## Web-app testing (global rule)
 

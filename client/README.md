@@ -1,9 +1,31 @@
 # wiki12 web client
 
-React + TypeScript SPA for the wiki12 A12-based wiki. Built with Vite, rendered
-with A12 Widgets, and driven by the A12 form engine. Talks to the A12 Data
-Service over JSON-RPC and to the Node model-lifecycle service over a small REST
-API — both same-origin behind nginx in production.
+React + TypeScript app for the wiki12 A12-based wiki, built on the **A12 Client
+framework** (`@com.mgmtp.a12.client/client-core` + `@com.mgmtp.a12.formengine`),
+bundled with Vite. Talks to the A12 Data Service over JSON-RPC and to the Node
+model-lifecycle service over a small REST API — both same-origin behind nginx in
+production. See **ADR-0007** and `specs/changes/a12-client-rebuild/`.
+
+## Architecture (`src/a12client/`)
+
+The app is an A12 Client: an **Application Model** (`appModel.ts`, generated from
+`CONTENT_MODELS`) declares scenes for Browse/Search/System + per-type
+Create/View/Edit; `appConfig.tsx` composes the Client (form engine features, a
+custom single-document data provider, localization, the platform model loader, and
+the custom views).
+
+- **Form screens** (Create/View/Edit) use the **Form Engine** inside an Activity
+  (`views/FormScreen.tsx`) — this is what makes value binding work, including the
+  Date → DatePicker fix. Localization MUST be configured or value conversion drops
+  every typed value.
+- **`wikiSingleDocumentDataProvider.ts`** routes load/save/delete through the proven
+  `api/content.ts` ops (the platform provider is incompatible — see ADR-0007).
+- **Non-form screens** (Browse/Search/System) are custom React views doing their own
+  fetch via `api/*`.
+- **Chrome** is a custom ApplicationFrame layout (`chrome/AppChrome.tsx`): brand,
+  live search, New dropdown, sidebar nav.
+- **`routing.ts`** maps URLs ↔ Activity descriptors (the Client deep-linking feature
+  is not a router); deep-link full loads work via the nginx SPA fallback.
 
 ## Develop
 
