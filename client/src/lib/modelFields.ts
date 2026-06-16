@@ -24,15 +24,38 @@ interface ControlLike {
   // version and we only read names.
   fieldName?: string;
   field?: { name?: string };
+  // A generated form-model Control carries no field name, only an `elementRef`
+  // (the DM element id, e.g. "F3") plus a runtime-only `elementPath` — a list of
+  // `{ elementName }` segments whose last entry IS the bound DM field's NAME.
+  // (Confirmed against @com.mgmtp.a12.formengine FormModel.FieldBasedInput +
+  // base-model-api ModelPath: `[{ elementName }]`, last segment = leaf.)
+  elementPath?: { elementName?: string }[];
+}
+
+/**
+ * Resolve the NAME of the document-model field a form-model Control is bound to.
+ * Generated Controls carry no `fieldName`/`field` — only `elementPath`, whose
+ * last segment's `elementName` is the bound field's name. Falls back to the
+ * legacy `fieldName`/`field.name` shapes for hand-authored controls. Pure.
+ */
+export function boundFieldName(control: ControlLike | undefined): string | undefined {
+  if (!control) return undefined;
+  const path = control.elementPath;
+  if (path && path.length > 0) {
+    const leaf = path[path.length - 1]?.elementName;
+    if (leaf) return leaf;
+  }
+  return control.fieldName ?? control.field?.name;
 }
 
 /**
  * Decide whether a form-model control should render the Milkdown editor.
- * True when the control carries wiki12.markdownBody, OR its bound field name is
- * one of the known body field names. Pure — unit tested.
+ * True when the control carries wiki12.markdownBody, OR its bound field name
+ * (resolved via {@link boundFieldName}, incl. a generated control's elementPath)
+ * is one of the known body field names. Pure — unit tested.
  */
 export function isMarkdownBodyControl(control: ControlLike | undefined, fieldName?: string): boolean {
   if (control?.annotations?.some((a) => a.name === MARKDOWN_BODY_ANNOTATION)) return true;
-  const name = fieldName ?? control?.fieldName ?? control?.field?.name;
+  const name = fieldName ?? boundFieldName(control);
   return name != null && DEFAULT_BODY_FIELD_NAMES.includes(name);
 }

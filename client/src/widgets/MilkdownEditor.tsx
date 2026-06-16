@@ -12,7 +12,7 @@
 
 import { useEffect, useRef } from "react";
 import type { ReactElement } from "react";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx, serializerCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, serializerCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { nord } from "@milkdown/theme-nord";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
@@ -34,6 +34,9 @@ export function MilkdownEditor(props: MilkdownEditorProps): ReactElement {
   // Keep the latest onChange without re-creating the editor on every render.
   const onChangeRef = useRef(props.onChange);
   onChangeRef.current = props.onChange;
+  // Keep the latest read-only flag readable from the editor's editable callback.
+  const readOnlyRef = useRef(props.readOnly);
+  readOnlyRef.current = props.readOnly;
 
   // Create the editor once on mount.
   useEffect(() => {
@@ -46,6 +49,12 @@ export function MilkdownEditor(props: MilkdownEditorProps): ReactElement {
       .config((ctx) => {
         ctx.set(rootCtx, host);
         ctx.set(defaultValueCtx, initial);
+        // ProseMirror consults `editable` on every state change; read the live ref
+        // so read-only (View mode) disables the contenteditable surface.
+        ctx.update(editorViewOptionsCtx, (prev) => ({
+          ...prev,
+          editable: () => !readOnlyRef.current,
+        }));
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
           onChangeRef.current(markdown);
         });
@@ -93,6 +102,17 @@ export function MilkdownEditor(props: MilkdownEditorProps): ReactElement {
       view.dispatch(tr);
     });
   }, [props.value]);
+
+  // Re-evaluate editability when read-only flips (e.g. View ↔ Edit) by dispatching a
+  // no-op transaction; ProseMirror re-reads the `editable` callback on each update.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr);
+    });
+  }, [props.readOnly]);
 
   return (
     <div

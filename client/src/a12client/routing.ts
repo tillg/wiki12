@@ -21,8 +21,11 @@ export interface Store {
 
 export interface Route {
   readonly descriptor: Record<string, string>;
-  // ui slices applied at creation (e.g. read-only for View)
-  readonly slices?: { ui?: { readonly?: boolean } };
+  // Form-engine data-holder slices applied at creation. The engine's uiStateReducer
+  // reads `slices.uiState` (resolveUiState spreads it into createUIState), so read-only
+  // for View is `{ uiState: { readonly: true } }`. (The key is `uiState`, NOT `ui` — the
+  // earlier `ui` key was silently ignored, which is why View stayed editable.)
+  readonly slices?: { uiState?: { readonly?: boolean } };
 }
 
 /** type/model name → the descriptor `model` key (e.g. "Person_DM" → "Person"). */
@@ -61,7 +64,7 @@ export async function routeForLocation(pathname: string, search: string): Promis
     const instance = resolved.found ? `${resolved.type}/${resolved.id}` : ref;
     return {
       descriptor: { model, mode, instance },
-      slices: mode === "view" ? { ui: { readonly: true } } : undefined,
+      slices: mode === "view" ? { uiState: { readonly: true } } : undefined,
     };
   }
 

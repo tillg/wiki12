@@ -7,7 +7,12 @@
 // the model's button panel (formModelMap) and drive persistence ourselves:
 //   - Create/Edit → Save dispatches ActivityActions.save (our data provider does the
 //     ADD/MODIFY), then navigates to the saved item's View; Cancel goes back.
-//   - View → read-only (Commands.setReadonly), with Edit + Delete actions.
+//   - View → read-only: the activity is created with the `ui.readonly` slice set
+//     (see routing.ts `slices: { ui: { readonly: true } }` for /view). The form
+//     engine consumes that at activity-creation time and renders every control
+//     read-only. We must NOT also dispatch a post-mount `Commands.setReadonly`
+//     command: doing so re-enters the engine's payload handling before the activity
+//     model is ready and trips `extractModelsFromPayload`'s assertion (blank screen).
 import type { ReactElement } from "react";
 import { useStore } from "react-redux";
 
@@ -71,7 +76,7 @@ export function FormScreen(props: ViewProps): ReactElement {
   const descriptor = descriptorOf(store, activityId);
   const mode = descriptor.mode;
   const instance = descriptor.instance ?? "";
-  // Read-only for View is requested via the activity-creation UI slice (routing.ts).
+  // Read-only for View is set via the activity-creation ui.readonly slice (routing.ts).
 
   return (
     <div className="wiki12-formscreen" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -83,7 +88,6 @@ export function FormScreen(props: ViewProps): ReactElement {
         <FormEngine
           {...(props as unknown as Record<string, unknown>)}
           cardView
-          disabled={mode === "view"}
           widgetMap={markdownWidgetMap}
           formModelMap={markdownButtonlessFormModelMap}
         />
