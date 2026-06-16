@@ -3,7 +3,8 @@
 How wiki12 is built, in its current state. Read [`domain.md`](domain.md) for the
 concepts first. Decisions are recorded in [`docs/adr/`](../../docs/adr/) (0001
 slug/identity, 0002 A12 extensibility, 0003 migrations, 0004 one-content-mechanism,
-0005 build/deploy).
+0005 build/deploy, 0006 content envelope, 0007 web client on the A12 Client
+framework).
 
 ## Overview
 
@@ -15,7 +16,7 @@ diverge ("two clients, one contract").
 ```mermaid
 flowchart TB
     subgraph Compose["docker compose"]
-        Client["client (nginx + React SPA)<br/>8081→80"]
+        Client["client (nginx + A12 Client app)<br/>8081→80"]
         Server["data-service (A12, Java/Spring)<br/>8082→8080"]
         Node["model-lifecycle (Node/TS)<br/>8090"]
         Keycloak["keycloak<br/>8089→8080"]
@@ -43,7 +44,7 @@ flowchart TB
 | Backend | **A12 Data Service** (Java / Spring Boot) | Model-driven CRUD/search/validation over JSON-RPC 2.0; extended with custom ops + a lifecycle listener |
 | Database | **PostgreSQL** | Content instances + model registry; slug advisory lock |
 | Identity | **Keycloak** | Sole user store (seeds `admin`/`admin`); auth present, authz not enforced in baseline |
-| Web client | **React + TypeScript** on **A12 Widgets** + **Form Engine** | Search/view/edit/delete; Milkdown markdown editor |
+| Web client | **A12 Client framework** (React + TS; `@com.mgmtp.a12.client` + Form Engine + Widgets) | Browse/search/view/create/edit/delete declared as an Application Model; Milkdown markdown editor (ADR-0007) |
 | Model-lifecycle | **Node / TypeScript** | Form-model generation + TS migration runner (transpile + sandbox) |
 | CLI | **`wiki12`** (Node / TypeScript) | Content CRUD + model/form management + migrations |
 | Orchestration | **Docker Compose** | 5 services; every image stamped with the single `VERSION` (ADR-0005) |
@@ -98,26 +99,47 @@ HTTP service owning everything that isn't content CRUD:
   client to the Data Service. Routes: `POST /models`, `GET /models[/:type]`,
   `GET|PUT /form-model[/:type]`, `POST /migrate`, `GET|PUT /migrations`.
 
-### Web client (`client/`, React)
+### Web client (`client/`, A12 Client framework — ADR-0007)
 
-- **Pages**: `LoginPage`, `BrowsePage` (landing `/`, replaced the old
-  submit-button `SearchPage` as home), `ViewPage`, `EditPage`, `SystemPage`.
-- **Browse components** (`src/components/`, reusable content vocabulary):
-  `ContentCard` (A12 `Card` + `Card.ActionArea`, the playing-card summary of any
-  item), `CardGrid` (responsive auto-fill columns), `ContentDetailView` (all
-  fields of an item rendered read-only). `BrowsePage` composes a live keystroke
-  filter + `CardGrid` with a hand-rolled responsive split to a `ContentDetailView`
-  pane (the A12 Managed Master-Detail widget couldn't show a full-width grid with
-  no detail pane) and a full-size toggle.
-- **API layer** (`src/api/`): `rpc` (JSON-RPC + batch), `content` (CRUD/resolve),
-  `search` (client-side fan-out; constraint-free `QUERY` per model for list-all,
-  normalized to card data incl. `createdOn`/`lastChangedOn`, merged + sorted by
-  last-change desc), `lifecycle` + `models`.
-- **Form rendering**: `FormEngineHost` (A12 Form Engine) and a hand-rolled
-  `SimpleForm` fallback; Milkdown wrapped as a form-engine widget
-  (`widgets/`). Auth in `lib/auth` (token + 401 auto-logout).
+Built on the **A12 Client** runtime (`@com.mgmtp.a12.client/client-core` + Form
+Engine + Widgets), not a hand-rolled SPA. The UI is declared as an **Application
+Model** of Activities/Views; the Form Engine runs *inside* an Activity (with a
+data provider), which is what makes value binding — including the `BirthDate`
+DatePicker — actually persist. This superseded the prior `SimpleForm` workaround,
+whose standalone form-engine embedding never dispatched typed values into the store.
+
+- **A12 Client wiring** (`src/a12client/`):
+  - `appConfig.tsx` composes the Client (form-engine features, the custom data
+    provider, localization, the platform model loader, the custom views).
+  - `appModel.ts` — the **Application Model**: an Activity per screen
+    (Browse/Search/System + a Form-Engine Create/View/Edit per content model).
+  - `views/` — `FormScreen` (Form Engine for Create/View/Edit, read-only slice for
+    View), and custom React views `BrowseView`, `SearchView`, `SystemView`.
+  - `wikiSingleDocumentDataProvider.ts` — a custom **single-document data provider**
+    routing load/save/delete through `api/content.ts` (`createEmptyDocument` for new,
+    `parseDates` on load, `filterDataByRelevance` + `formatDates` on save → `ADD_`/
+    `MODIFY_`/`DELETE_DOCUMENT`). The platform provider is incompatible (ADR-0007).
+  - `routing.ts` — a thin URL↔Activity layer (the Client deep-linking feature is not
+    a router): `/`, `/view/:ref`, `/edit/:ref`, `/create?type=`, `/search`, `/system`
+    map to Activity descriptors; one current Activity at a time; slug refs resolve
+    via `ResolveBySlug`.
+  - `chrome/AppChrome.tsx` — the Application Frame chrome (brand, global live-search
+    box, **New** type dropdown, sidebar nav).
+- **API layer** (`src/api/`, reused unchanged across the rebuild): `rpc` (JSON-RPC +
+  batch), `content` (CRUD/resolve), `search` (client-side fan-out; constraint-free
+  `QUERY` per model for list-all, normalized to card data incl.
+  `createdOn`/`lastChangedOn`, merged + sorted by last-change desc), `lifecycle` +
+  `models`.
+- **Browse/Search rendering**: custom views over the reusable content cards
+  (`ContentCard`/`CardGrid`); Browse is a full-width gallery whose cards navigate to
+  the standalone `/view/<slug>`.
+- **Markdown**: Milkdown registered in the Client widget map for the `Body` field.
+  Auth in `lib/auth` (token + 401 auto-logout). The slug-vs-docRef URL rule is the
+  pure `lib/refUrl.ts`.
 - **Theme**: sans-serif base font via `createTheme` typography over the flat A12
   theme; meaning is encoded with A12 widgets' semantic props, never hand-set colors.
+- **Retired by this change**: the React-Router `App.tsx`/pages, `SimpleForm.tsx`,
+  `docModel.ts`, and the bare `FormEngineHost.tsx`.
 
 ### CLI (`cli/`, Node)
 

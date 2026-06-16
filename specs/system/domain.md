@@ -8,8 +8,8 @@ in [`CONTEXT.md`](../../CONTEXT.md); this is the fuller picture).
 
 wiki12 is a wiki built on **A12** (mgm technology partners' model-driven
 platform). It manages two kinds of content — **Pages** and typed **Entities** —
-over a single A12 Data Service, reached from a React web client and the `wiki12`
-CLI. Content structure is described as **models** (declarative JSON); generic
+over a single A12 Data Service, reached from a web client (on the **A12 Client
+framework**, ADR-0007) and the `wiki12` CLI. Content structure is described as **models** (declarative JSON); generic
 A12 engines turn those models into storage, validation, an editing form, and
 querying — so adding a content type is primarily a *modeling* task, not a coding
 task.
