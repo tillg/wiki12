@@ -12,7 +12,7 @@
 
 import { useEffect, useRef } from "react";
 import type { ReactElement } from "react";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, serializerCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, parserCtx, serializerCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { nord } from "@milkdown/theme-nord";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
@@ -90,16 +90,17 @@ export function MilkdownEditor(props: MilkdownEditorProps): ReactElement {
       const view = ctx.get(editorViewCtx);
       const serializer = ctx.get(serializerCtx);
       const current = serializer(view.state.doc);
-      if (current === props.value) return;
+      // Skip when the doc already serializes to the incoming markdown — this also
+      // covers the echo of the user's own edits, so we don't reset the cursor.
+      if (current === (props.value ?? "")) return;
+      // PARSE the markdown into a ProseMirror document and replace the content. Using
+      // schema.text() here would insert the markdown as LITERAL text, which Milkdown
+      // then re-escapes every cycle (runaway `\*\*…`). parserCtx round-trips cleanly.
+      const parser = ctx.get(parserCtx);
+      const parsed = parser(props.value ?? "");
+      if (!parsed) return;
       const { state } = view;
-      const tr = state.tr.replaceWith(
-        0,
-        state.doc.content.size,
-        props.value ? state.schema.text(props.value) : [],
-      );
-      // NOTE: a full markdown re-parse on external set would be ideal; for the
-      // common case (load once, then edit) this guard avoids cursor resets.
-      view.dispatch(tr);
+      view.dispatch(state.tr.replaceWith(0, state.doc.content.size, parsed.content));
     });
   }, [props.value]);
 
