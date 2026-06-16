@@ -186,3 +186,9 @@ brought up with the plain `docker-compose.yml` (no override) and verified — so
 - client: `a12client/routing.ts`, `a12client/views/FormScreen.tsx`,
   `widgets/markdownWidgetMap.tsx`, `widgets/MilkdownEditor.tsx`, `lib/modelFields.ts` (+test).
 - docs: `README.md` (Known issues & TODO), this file.
+
+### Post-commit continued testing (found + fixed one more bug)
+Browse list renders all content across types. E2E surfaced a Milkdown bug: a body typed
+in the editor was stored as a runaway backslash string (`\*\*…`) — the value-sync effect
+inserted markdown as literal ProseMirror text and re-escaped it each cycle. Fixed by
+parsing via `parserCtx` (commit 8e7c204). Verified clean create + edit-load round-trip.
