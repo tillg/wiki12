@@ -1,466 +1,296 @@
 package net.mgmtp.wiki12.slug;
 
+import com.mgmtp.a12.dataservices.document.DataServicesDocument;
+import com.mgmtp.a12.dataservices.document.DocumentReference;
 import com.mgmtp.a12.dataservices.document.persistence.IDocumentRepository;
-import com.mgmtp.a12.dataservices.model.persistence.IModelLoader;
-import com.mgmtp.a12.dataservices.query.QueryService;
-import com.mgmtp.a12.dataservices.query.QueryRoot;
-import com.mgmtp.a12.kernel.md.document.v2.DocumentV2;
-import com.mgmtp.a12.kernel.md.document.v2.UpdateAction;
-import com.mgmtp.a12.kernel.md.facade.DocumentModelServiceFactory;
-import com.mgmtp.a12.kernel.md.facade.IDocumentModelSearchService;
-import com.mgmtp.a12.kernel.md.model.IDocumentModel;
-import com.mgmtp.a12.kernel.md.model.IField;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.mgmtp.a12.kernel.md.document.apiV2.DocumentPointer;
+import com.mgmtp.a12.kernel.md.document.apiV2.PathPart;
+import com.mgmtp.a12.kernel.md.document.apiV2.UpdateAction;
+import com.mgmtp.a12.kernel.md.document.apiV2.immutable.DocumentV2;
+import com.mgmtp.a12.kernel.md.document.apiV2.immutable.FieldInstanceV2;
+import com.mgmtp.a12.kernel.md.document.apiV2.immutable.GroupInstanceV2;
+import com.mgmtp.a12.kernel.md.document.apiV2.immutable.RepetitionsV2;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
- * Computes the derived {@code slug} and {@code searchText} for a wiki12 content
- * document inside the write transaction, and serializes same-name writes with a
- * transaction-scoped Postgres advisory lock.
+ * Derives the wiki12 standard content envelope — {@code slug}, {@code searchText},
+ * {@code CreatedOn}, derived {@code Title}, and the append-only {@code Changes} log —
+ * for a content document inside the write transaction (ADR-0001 / ADR-0006).
  *
- * <p>Mechanism (findings §1a, ADR-0001):
- * <ol>
- *   <li>Read the model's key fields in {@code wiki12.keyField} order; derive the name
- *       via {@link Slugifier#deriveName(List)} and namespace it with the model's type.</li>
- *   <li>Take {@code pg_advisory_xact_lock(hashtext(textPart))} so concurrent creates of
- *       the same name serialize (auto-released at commit/rollback).</li>
- *   <li>Query existing slugs for the type; assign the sticky {@code _N} suffix on
- *       collision (keep the existing suffix when the name part is unchanged on update).</li>
- *   <li>Write the {@code slug} field and the {@code searchText} blob
- *       (concatenation of {@code wiki12.searchable} fields).</li>
- * </ol>
+ * <p>Uses the immutable A12 {@link DocumentV2} API: read field values by path with
+ * {@link DocumentV2#fieldValue(String)}, write with {@link UpdateAction#putFieldValue}
+ * batched via {@link DocumentV2#withBatchUpdates}, and append a change-log repetition
+ * with {@link DocumentV2#withGroupRepetitionAppended}. The per-model paths come from
+ * {@link ModelConfigRegistry} (read from the DM JSON).
  *
- * <p><b>Concurrency gate:</b> the advisory lock rests on the still-unverified ability
- * to inject a raw {@code JdbcTemplate} bound to the request transaction
- * (findings §1a Probe A / ADR-0002 residual). See {@code server/README.md}.
+ * <p>Slug collision (the sticky {@code _N} suffix) and the cross-document advisory
+ * lock are NOT handled here — see {@code AUTONOMOUS-DECISIONS.md}; the bare
+ * {@code <type>:<name>} slug is derived. Uniqueness is enforced opportunistically by
+ * the caller if a collision service is wired later.
  */
-@Slf4j
 @Component
-@RequiredArgsConstructor
 public class ContentDerivationService {
 
-    // VERIFY: JdbcTemplate must be backed by the SAME DataSource/transaction A12 uses
-    // for the write (spring.datasources.dataservices). If A12 registers multiple
-    // DataSources, this likely needs @Qualifier("dataservices...") or an injected
-    // DataSource wrapped here. This is the hard gate (findings §1a, Probe A).
-    private final JdbcTemplate jdbcTemplate;
-    private final QueryService queryService;
+    private static final Logger log = LoggerFactory.getLogger(ContentDerivationService.class);
+
+    private final ModelConfigRegistry registry;
     private final IDocumentRepository documentRepository;
-    private final IModelLoader<IDocumentModel> documentModelLoader;
-    private final DocumentModelServiceFactory documentModelServiceFactory;
+
+    public ContentDerivationService(ModelConfigRegistry registry, IDocumentRepository documentRepository) {
+        this.registry = registry;
+        this.documentRepository = documentRepository;
+    }
 
     /** Outcome of a derivation: the (possibly) mutated document plus the rename diff. */
     public record Result(DocumentV2 document, boolean changed, String oldSlug, String newSlug) {
-        boolean slugChanged() {
+        public boolean slugChanged() {
             return oldSlug != null && newSlug != null && !oldSlug.equals(newSlug);
         }
     }
 
-    /** Derive slug + searchText for a brand-new document. */
     public Result deriveForCreate(DocumentV2 document) {
         return derive(document, null);
     }
 
-    /** Re-derive slug + searchText for an update, preserving suffix when the name is unchanged. */
     public Result deriveForUpdate(DocumentV2 updated, DocumentV2 persisted) {
         return derive(updated, persisted);
     }
 
     private Result derive(DocumentV2 document, DocumentV2 persisted) {
         String modelId = document.getDocumentModelId();
-        IDocumentModel model = documentModelLoader.loadModel(modelId);
-        IDocumentModelSearchService search = documentModelServiceFactory.createDocumentModelSearchService(model);
-
-        ModelDerivationConfig config = readConfig(search);
-        if (!config.hasSlugTarget()) {
+        ModelDerivationConfig config = registry.forModel(modelId);
+        if (config == null || !config.hasSlugTarget()) {
             // Not a wiki12 content model (no derived slug field) — leave untouched.
             return new Result(document, false, null, null);
         }
 
+        boolean isCreate = persisted == null;
         String type = namespaceFor(modelId);
 
-        // (a) Derive the name part from key fields in order.
-        List<String> keyValues = readFieldValues(document, config.keyFieldPaths());
+        // (a) Name part from key fields in order; slug = <type>:<name>.
+        List<String> keyValues = readValues(document, config.keyFieldPaths());
         String namePart = Slugifier.deriveName(keyValues);
         String base = type + ":" + namePart;
 
-        // (b) Advisory lock on the slug text part — serializes same-name writes.
-        // VERIFY (hard gate, findings §1a): confirm this runs inside A12's write
-        // transaction so the lock auto-releases on commit/rollback. A12 starts the
-        // main transaction before the listener runs, so a JdbcTemplate bound to the
-        // same DataSource participates in it.
-        lockSlugText(base);
-
-        // (c) Collision handling -> sticky _N suffix.
-        String oldSlug = persisted == null ? null : readFieldValue(persisted, config.slugFieldPath());
-        String oldNamePart = oldSlug == null ? null : stripSuffixToNamePart(oldSlug);
-
-        String newSlug;
-        if (persisted != null && namePart.equals(oldNamePart)) {
-            // Update with unchanged name part: keep the existing (possibly suffixed) slug.
-            newSlug = oldSlug;
-        } else {
-            int n = nextAvailableOrdinal(modelId, config.slugFieldPath(), base,
-                    persisted == null ? null : readDocRef(persisted));
-            newSlug = Slugifier.withSuffix(base, n);
-        }
-
-        // (d) Build searchText blob.
-        List<String> searchableValues = readFieldValues(document, config.searchableFieldPaths());
-        String searchText = Slugifier.searchText(searchableValues);
+        // (b) Collision suffix: a sticky _N on the name part. Preserved on update when the
+        // name part is unchanged; otherwise pick the next free ordinal for the base.
+        String oldSlug = persisted == null ? null : readValue(persisted, config.slugFieldPath());
+        // base and the old slug-minus-suffix are both namespaced (e.g. "page:foo"); equal
+        // means the name part is unchanged, so keep the (possibly suffixed) existing slug.
+        String oldBase = (oldSlug == null || oldSlug.isEmpty()) ? null : stripSuffixToNamePart(oldSlug);
+        String selfId = persisted == null ? null : bareId(persisted.getId().orElse(null));
+        String newSlug = base.equals(oldBase)
+                ? oldSlug
+                : uniqueSlug(modelId, config.slugFieldPath(), base, selfId);
 
         List<UpdateAction> updates = new ArrayList<>();
         updates.add(UpdateAction.putFieldValue(config.slugFieldPath(), newSlug));
+
         if (config.hasSearchTextTarget()) {
-            updates.add(UpdateAction.putFieldValue(config.searchTextFieldPath(), searchText));
+            List<String> searchableValues = readValues(document, config.searchableFieldPaths());
+            updates.add(UpdateAction.putFieldValue(config.searchTextFieldPath(),
+                    Slugifier.searchText(searchableValues)));
         }
 
-        // (e) Standard content envelope (specs/changes/mandatory-content-fields).
-        boolean isCreate = persisted == null;
-        String now = nowIso();
+        // A12 stores a DateTimeType value as a java.time.Instant (the FieldValueConverter
+        // serializes it via the field's format); a String value is rejected.
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
 
-        // CreatedOn: stamped once at create, never on update (immutable audit).
-        if (isCreate && config.hasCreatedOnTarget()) {
-            updates.add(UpdateAction.putFieldValue(config.createdOnFieldPath(), now));
+        // CreatedOn: stamped once at create; on update, carried over from the persisted
+        // document (the client's MODIFY payload omits derived fields, so re-seed it).
+        if (config.hasCreatedOnTarget()) {
+            if (isCreate) {
+                updates.add(UpdateAction.putFieldValue(config.createdOnFieldPath(), now));
+            } else {
+                Object createdOn = safeFieldValueObj(persisted, config.createdOnFieldPath());
+                if (createdOn != null) {
+                    updates.add(UpdateAction.putFieldValue(config.createdOnFieldPath(), createdOn));
+                }
+            }
         }
 
-        // Title: human display label derived from the key-field values (original
-        // casing), for models that declare a derived title. Re-derived every write.
+        // Title: derived display label from the key-field values (only for models that declare it).
         if (config.hasTitleTarget()) {
             updates.add(UpdateAction.putFieldValue(config.titleFieldPath(),
                     Slugifier.displayTitle(keyValues)));
         }
 
-        // Changes: append one entry {ChangedOn=now, Summary} per write.
+        DocumentV2 mutated = document.withBatchUpdates(updates);
+
+        // Changes: append one {ChangedOn, Summary} repetition per write. The append-only
+        // log must survive updates — the client's MODIFY payload doesn't carry the prior
+        // Changes, so re-seed them from the persisted document before appending.
         if (config.hasChangeLog()) {
+            if (!isCreate) {
+                mutated = carryOverChangeLog(mutated, persisted, config);
+            }
             String summary = isCreate
                     ? Slugifier.SUMMARY_CREATED
                     : Slugifier.updateSummary(changedFieldLabels(document, persisted, config));
-            appendChangeEntry(updates, config, persisted, now, summary);
+            mutated = appendChangeEntry(mutated, config, now, summary);
         }
 
-        // VERIFY: withBatchUpdates(...) is the documented batched-mutation API
-        // (dev_tutorial_backend_document_manipulation.md). It returns a new immutable
-        // DocumentV2.
-        DocumentV2 mutated = document.withBatchUpdates(updates);
-
+        log.debug("wiki12: derived envelope for {} — slug={}, create={}", modelId, newSlug, isCreate);
         return new Result(mutated, true, oldSlug, newSlug);
     }
 
-    // ------------------------------------------------------------------
-    // Standard content envelope helpers
-    // ------------------------------------------------------------------
-
     /**
-     * The current write instant as the string A12 stores for a {@code DateTimeType}.
+     * The pointer to the change-log group: each part carries a 1-based repetition index,
+     * the last part is 0 (the append/all-repetitions "wildcard"). E.g. {@code Page[1]/Changes[0]}.
+     * The plain string path is rejected by the group APIs, which require this shape.
      */
-    private String nowIso() {
-        // VERIFY (envelope #1, #3): two assumptions bundled here.
-        //  (1) Write clock — whether DocumentBefore*Event / the kernel exposes a canonical
-        //      transaction timestamp to prefer over server wall-clock. Using Instant.now()
-        //      for now (the model timeZone is UTC).
-        //  (2) DateTimeType wire format — confirm the exact ISO string A12 expects for a
-        //      DateTimeType field value (Instant.toString() yields e.g. 2026-06-14T10:15:30Z).
-        return Instant.now().toString();
+    private static DocumentPointer changesPointer(ModelDerivationConfig config) {
+        return DocumentPointer.of(List.of(
+                PathPart.of(config.rootGroupName(), 1),
+                PathPart.of(lastSegment(config.changeLogGroupPath()), 0)));
     }
 
-    /** Labels of the user-editable fields whose value differs between updated and persisted. */
+    /** Copy the persisted document's change-log repetitions onto the updated document. */
+    private DocumentV2 carryOverChangeLog(DocumentV2 updated, DocumentV2 persisted,
+            ModelDerivationConfig config) {
+        try {
+            RepetitionsV2 prior = persisted.groupAllRepetitions(changesPointer(config));
+            if (prior != null && prior.size() > 0) {
+                return updated.withGroupAllRepetitions(changesPointer(config), prior);
+            }
+        } catch (RuntimeException e) {
+            log.warn("wiki12: could not carry over change-log; appending fresh", e);
+        }
+        return updated;
+    }
+
+    /** Append a change-log repetition built as a GroupInstanceV2 of {ChangedOn, Summary}. */
+    private DocumentV2 appendChangeEntry(DocumentV2 document, ModelDerivationConfig config,
+            Instant now, String summary) {
+        String dtField = lastSegment(config.changeDatetimePath());
+        String sumField = lastSegment(config.changeSummaryPath());
+
+        Map<String, FieldInstanceV2> fields = new LinkedHashMap<>();
+        fields.put(dtField, FieldInstanceV2.ofValue(now));
+        fields.put(sumField, FieldInstanceV2.ofValue(summary));
+
+        GroupInstanceV2 entry = GroupInstanceV2.of(Map.of(), fields);
+        return document.withGroupRepetitionAppended(changesPointer(config), entry);
+    }
+
+    private static Object safeFieldValueObj(DocumentV2 doc, String path) {
+        if (doc == null || path == null) {
+            return null;
+        }
+        try {
+            return doc.fieldValue(path);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private List<String> changedFieldLabels(DocumentV2 updated, DocumentV2 persisted,
             ModelDerivationConfig config) {
         List<String> labels = new ArrayList<>();
         for (EditableField ef : config.editableFields()) {
-            String now = readFieldValue(updated, ef.path());
-            String before = readFieldValue(persisted, ef.path());
-            if (!Objects.equals(now, before)) {
+            if (!Objects.equals(readValue(updated, ef.path()), readValue(persisted, ef.path()))) {
                 labels.add(ef.label());
             }
         }
         return labels;
     }
 
-    /** Append a {@code {ChangedOn, Summary}} repetition to the change-log group. */
-    private void appendChangeEntry(List<UpdateAction> updates, ModelDerivationConfig config,
-            DocumentV2 persisted, String now, String summary) {
-        // The new entry goes at the next free index = current repetition count (0 on create).
-        int index = persisted == null ? 0 : changeEntryCount(persisted, config.changeLogGroupPath());
-        String group = config.changeLogGroupPath();
-        String entry = group + "[" + index + "]";
-        // datetime/summary paths are group-relative; re-root them under the indexed entry.
-        String dtPath = entry + config.changeDatetimePath().substring(group.length());
-        String sumPath = entry + config.changeSummaryPath().substring(group.length());
-        // VERIFY (envelope #2): adding a repetition to a repeatable group. We model it as a
-        // putFieldValue on the indexed path "/Changes[N]/Field"; confirm A12 auto-creates the
-        // Nth repetition on first write to an indexed path, or whether a dedicated
-        // "add repetition" UpdateAction / document-builder call is required first.
-        updates.add(UpdateAction.putFieldValue(dtPath, now));
-        updates.add(UpdateAction.putFieldValue(sumPath, summary));
-    }
-
-    /** Number of existing repetitions in the change-log group of a persisted document. */
-    private int changeEntryCount(DocumentV2 document, String groupPath) {
-        // VERIFY (envelope #2): reading the repetition count of a repeatable group from a
-        // DocumentV2 (likely via the field/group instance API). Stubbed to 0 until wired —
-        // until then updates would overwrite entry 0 rather than append.
-        return 0;
-    }
-
-    /** Display label of a field (for the change-log diff); falls back to the field name. */
-    private String fieldLabel(IField field) {
-        // VERIFY (envelope #4): reading a field's localized label (IField label accessor).
-        // Falls back to the field name, which is always available.
-        try {
-            return field.getName();
-        } catch (RuntimeException e) {
-            return "field";
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Advisory lock
     // ------------------------------------------------------------------
 
-    private void lockSlugText(String slugTextPart) {
-        // pg_advisory_xact_lock takes a bigint; hashtext() maps the text to int4, which
-        // Postgres widens to bigint. Auto-released at transaction end.
-        jdbcTemplate.queryForObject(
-                "select pg_advisory_xact_lock(hashtext(?))",
-                Void.class,
-                slugTextPart);
-        // VERIFY: queryForObject with Void.class may not be the right call shape for a
-        // function returning void; pg_advisory_xact_lock returns void. If the driver
-        // rejects Void.class, use jdbcTemplate.execute / queryForRowSet, or
-        // "select 1 from (select pg_advisory_xact_lock(hashtext(?))) t".
-    }
-
-    // ------------------------------------------------------------------
-    // Collision query: find the next free _N for this base
-    // ------------------------------------------------------------------
-
-    private int nextAvailableOrdinal(String modelId, String slugFieldPath, String base, String selfDocRef) {
-        // Query all existing slugs for this model whose value starts with the base.
-        // We can't do a prefix match with exact_match, so we fetch candidates and
-        // filter in Java (the set per name is tiny — collisions are rare).
-        // VERIFY: a "starts_with"/"simple_search" prefix operator would be more
-        // efficient; exact_match on base + exact_match on base_2.. is also possible but
-        // unbounded. Here we list slugs for the model and filter. Confirm the cheapest
-        // operator against the Query API (dataservices-documentation-src.md §Query).
-        List<String> existing = queryExistingSlugs(modelId, slugFieldPath, base, selfDocRef);
-
-        boolean baseTaken = existing.stream().anyMatch(base::equals);
-        if (!baseTaken) {
-            return 1;
-        }
-        int max = 1;
-        String prefix = base + "_";
-        for (String s : existing) {
-            if (s.startsWith(prefix)) {
-                String tail = s.substring(prefix.length());
-                try {
-                    max = Math.max(max, Integer.parseInt(tail));
-                } catch (NumberFormatException ignore) {
-                    // a name that legitimately ends with _<word> is not a suffix; skip.
-                }
-            }
-        }
-        return max + 1;
-    }
-
-    private List<String> queryExistingSlugs(String modelId, String slugFieldPath, String base, String selfDocRef) {
-        // VERIFY: QueryRoot.builder()/projectionName("document")/fields(...) mirror
-        // dev_tutorial_backend_custom_endpoint.md. We project just the slug field +
-        // docRef. The exact result-row type and accessor (DocumentTreeResult.getDocRef
-        // / field projection access) is inferred; confirm how a projected scalar field
-        // is read from the QueryPage rows.
-        QueryRoot queryRoot = QueryRoot.builder()
-                .targetDocumentModel(modelId)
-                .projectionName("document")
-                .fields(List.of(slugFieldPath, "/__meta/docRef"))
-                .build();
-
-        List<String> slugs = new ArrayList<>();
-        try {
-            // We pass null locale (slug is not localized), as the tutorial does for
-            // non-localized values.
-            queryService.query(queryRoot, null).getContent().forEach(row -> {
-                // VERIFY: row is the projection result; extracting the slug scalar and
-                // the docRef from it is API-specific. Pseudocode shape below.
-                String docRef = extractDocRef(row);
-                if (selfDocRef != null && selfDocRef.equals(docRef)) {
-                    return; // ignore self on update
-                }
-                String slug = extractSlug(row, slugFieldPath);
-                if (slug != null && (slug.equals(base) || slug.startsWith(base + "_"))) {
-                    slugs.add(slug);
-                }
-            });
-        } catch (RuntimeException e) {
-            log.warn("Slug collision query failed for model {} — assuming no collisions", modelId, e);
-        }
-        return slugs;
-    }
-
-    // VERIFY: the two extractors below depend on the concrete QueryPage row type. The
-    // tutorial casts rows to DocumentTreeResult and calls getDocRef(); reading a
-    // projected field value from a row is not shown. Implement against the live API.
-    private String extractDocRef(Object row) {
-        // e.g. ((DocumentTreeResult) row).getDocRef().toString()
-        return null;
-    }
-
-    private String extractSlug(Object row, String slugFieldPath) {
-        // e.g. read the projected scalar at slugFieldPath from the row's field map
-        return null;
-    }
-
-    private String readDocRef(DocumentV2 document) {
-        // VERIFY: how to read the docRef of an already-persisted DocumentV2 (likely via
-        // document metadata / getMetadata().getDocRef()). Used to exclude self on update.
-        return null;
-    }
-
-    // ------------------------------------------------------------------
-    // Model config: read wiki12.* annotations from the document model
-    // ------------------------------------------------------------------
-
-    private ModelDerivationConfig readConfig(IDocumentModelSearchService search) {
-        // VERIFY: iterating all fields of the model and reading each field's
-        // annotations. The tutorial uses search.getByPath(path) for a known path and
-        // IField.getFieldType(); reading IField.getAnnotations() (name/value pairs) and
-        // enumerating all fields is inferred. Likely search.getAllFields() or a model
-        // walk; annotation access likely IField.getAnnotations() -> List<IAnnotation>
-        // with getName()/getValue(). Confirm against kernel-documentation-dev.md.
-        List<IField> fields = allFields(search);
-
-        List<KeyField> keyFields = new ArrayList<>();
-        String slugFieldPath = null;
-        String searchTextFieldPath = null;
-        String createdOnFieldPath = null;
-        String titleFieldPath = null;
-        String changeDatetimePath = null;
-        String changeSummaryPath = null;
-        List<String> searchablePaths = new ArrayList<>();
-        List<EditableField> editableFields = new ArrayList<>();
-
-        for (IField field : fields) {
-            String path = fieldPath(field);
-            String keyOrder = annotationValue(field, WikiAnnotations.KEY_FIELD);
-            if (keyOrder != null) {
-                keyFields.add(new KeyField(path, keyOrder));
-            }
-            String derived = annotationValue(field, WikiAnnotations.DERIVED);
-            String changeField = annotationValue(field, WikiAnnotations.CHANGE_FIELD);
-            if (WikiAnnotations.DERIVED_SLUG.equals(derived)) {
-                slugFieldPath = path;
-            } else if (WikiAnnotations.DERIVED_SEARCH_TEXT.equals(derived)) {
-                searchTextFieldPath = path;
-            } else if (WikiAnnotations.DERIVED_CREATED_ON.equals(derived)) {
-                createdOnFieldPath = path;
-            } else if (WikiAnnotations.DERIVED_TITLE.equals(derived)) {
-                titleFieldPath = path;
-            } else if (WikiAnnotations.CHANGE_FIELD_DATETIME.equals(changeField)) {
-                changeDatetimePath = path;
-            } else if (WikiAnnotations.CHANGE_FIELD_SUMMARY.equals(changeField)) {
-                changeSummaryPath = path;
-            } else if (derived == null && changeField == null) {
-                // A user-editable field (no derived/changeField role) — tracked for the
-                // change-log diff. Key fields are editable too, so they are included.
-                editableFields.add(new EditableField(path, fieldLabel(field)));
-            }
-            if (WikiAnnotations.SEARCHABLE_TRUE.equals(annotationValue(field, WikiAnnotations.SEARCHABLE))) {
-                searchablePaths.add(path);
-            }
-        }
-
-        keyFields.sort(Comparator.comparing(kf -> kf.order));
-        List<String> keyPaths = keyFields.stream().map(kf -> kf.path).toList();
-
-        // The change-log group is the parent of its datetime/summary child fields, so
-        // its path is the datetime field's path with the last segment removed
-        // ("/Changes/ChangedOn" -> "/Changes"). Avoids a separate group annotation walk.
-        String changeLogGroupPath = changeDatetimePath == null
-                ? null
-                : changeDatetimePath.substring(0, changeDatetimePath.lastIndexOf('/'));
-
-        return new ModelDerivationConfig(keyPaths, slugFieldPath, searchTextFieldPath, searchablePaths,
-                createdOnFieldPath, titleFieldPath, changeLogGroupPath, changeDatetimePath,
-                changeSummaryPath, editableFields);
-    }
-
-    // ------------------------------------------------------------------
-    // Document field access helpers
-    // ------------------------------------------------------------------
-
-    private List<String> readFieldValues(DocumentV2 document, List<String> paths) {
+    private List<String> readValues(DocumentV2 document, List<String> paths) {
         List<String> values = new ArrayList<>(paths.size());
         for (String path : paths) {
-            values.add(readFieldValue(document, path));
+            values.add(readValue(document, path));
         }
         return values;
     }
 
-    private String readFieldValue(DocumentV2 document, String path) {
+    private String readValue(DocumentV2 document, String path) {
         if (path == null) {
             return "";
         }
-        // VERIFY: reading a String field value by absolute path from DocumentV2. The
-        // tutorial reads via the generic API (document.field(pointer)/FieldInstanceV2
-        // .value()) or typed accessors. Using a path-string read here; confirm the
-        // generic accessor name (e.g. document.fieldByPath(path).map(v -> (String)
-        // v.value())).
         try {
-            return Optional.ofNullable(document.getStringValueByPath(path)).orElse("");
+            Object v = document.fieldValue(path);
+            return v == null ? "" : v.toString();
         } catch (RuntimeException e) {
             return "";
         }
     }
 
-    // ------------------------------------------------------------------
-    // Inferred model-introspection helpers (all // VERIFY)
-    // ------------------------------------------------------------------
-
-    private List<IField> allFields(IDocumentModelSearchService search) {
-        // VERIFY: enumerate all fields of the model. Placeholder returns empty; wire to
-        // the real model walk (search.getAllFields() / walking groups).
-        return List.of();
+    /**
+     * The lowest-ordinal free slug for {@code base}: {@code base} itself if unused, else
+     * {@code base_2}, {@code base_3}, … Scans existing slugs of the model via the
+     * repository (excluding {@code selfId}). NOTE: no advisory lock, so two concurrent
+     * creates of the same name could still collide — the documented spike limitation
+     * (specs/changes/basic_setup/spike-slug-concurrency.md); fine for single-writer use.
+     */
+    private String uniqueSlug(String modelId, String slugPath, String base, String selfId) {
+        java.util.Set<String> existing = existingSlugs(modelId, slugPath, base, selfId);
+        if (!existing.contains(base)) {
+            return base;
+        }
+        int n = 2;
+        while (existing.contains(base + "_" + n)) {
+            n++;
+        }
+        return base + "_" + n;
     }
 
-    private String fieldPath(IField field) {
-        // VERIFY: absolute path of a field within the model (e.g. field.getPath() or
-        // built from group ancestry). The query/update APIs expect "/Group/Field" form.
-        return field.toString();
+    /** Slugs of other documents of this model that equal {@code base} or start with {@code base_}. */
+    private java.util.Set<String> existingSlugs(String modelId, String slugPath, String base, String selfId) {
+        java.util.Set<String> slugs = new java.util.HashSet<>();
+        try {
+            for (DocumentReference ref : documentRepository.findAllDocRefsForModel(modelId)) {
+                DataServicesDocument dsDoc = documentRepository.findByDocumentReference(ref).orElse(null);
+                if (dsDoc == null) {
+                    continue;
+                }
+                DocumentV2 other = dsDoc.getKernelDocument();
+                if (selfId != null && selfId.equals(bareId(other.getId().orElse(null)))) {
+                    continue; // exclude self on update
+                }
+                String s = readValue(other, slugPath);
+                if (s.equals(base) || s.startsWith(base + "_")) {
+                    slugs.add(s);
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("wiki12: slug collision scan failed for {} — assuming no collision", modelId, e);
+        }
+        return slugs;
     }
 
-    private String annotationValue(IField field, String name) {
-        // VERIFY: read a named annotation value off a field. Likely:
-        //   field.getAnnotations().stream()
-        //        .filter(a -> name.equals(a.getName())).map(a -> a.getValue())...
-        return null;
+    private static String lastSegment(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash < 0 ? path : path.substring(slash + 1);
+    }
+
+    /** A12 getId() may be the full "Model_DM/<uuid>" docRef; keep only the uuid (null-safe). */
+    private static String bareId(String rawId) {
+        if (rawId == null) {
+            return null;
+        }
+        int slash = rawId.lastIndexOf('/');
+        return slash < 0 ? rawId : rawId.substring(slash + 1);
     }
 
     private String namespaceFor(String modelId) {
-        // Map a Document Model id to its slug namespace. Convention: strip a "_DM"
-        // suffix and lowercase, so "Page_DM" -> "page", "Person_DM" -> "person".
-        // VERIFY: confirm this matches the model naming convention used by the wiki12
-        // models, or read it from a model-level annotation instead.
-        String id = modelId;
-        if (id.endsWith("_DM")) {
-            id = id.substring(0, id.length() - 3);
-        }
+        // "Page_DM" -> "page", "Person_DM" -> "person".
+        String id = modelId.endsWith("_DM") ? modelId.substring(0, modelId.length() - 3) : modelId;
         return id.toLowerCase();
     }
 
     private String stripSuffixToNamePart(String slug) {
-        // Remove a trailing _<digits> to recover the name part for "unchanged name?"
-        // comparison. "person:till_gartner_2" -> "person:till_gartner".
         int colon = slug.indexOf(':');
         int lastUnderscore = slug.lastIndexOf('_');
         if (lastUnderscore > colon) {
@@ -470,52 +300,5 @@ public class ContentDerivationService {
             }
         }
         return slug;
-    }
-
-    // ------------------------------------------------------------------
-    // Small value types
-    // ------------------------------------------------------------------
-
-    private record KeyField(String path, String order) {
-    }
-
-    /** A non-derived (user-editable) field: its absolute path + display label, for the change diff. */
-    record EditableField(String path, String label) {
-    }
-
-    /** Resolved per-model derivation paths read from the wiki12.* annotations. */
-    record ModelDerivationConfig(
-            List<String> keyFieldPaths,
-            String slugFieldPath,
-            String searchTextFieldPath,
-            List<String> searchableFieldPaths,
-            String createdOnFieldPath,
-            String titleFieldPath,
-            String changeLogGroupPath,
-            String changeDatetimePath,
-            String changeSummaryPath,
-            List<EditableField> editableFields) {
-
-        boolean hasSlugTarget() {
-            return slugFieldPath != null;
-        }
-
-        boolean hasSearchTextTarget() {
-            return searchTextFieldPath != null;
-        }
-
-        boolean hasCreatedOnTarget() {
-            return createdOnFieldPath != null;
-        }
-
-        boolean hasTitleTarget() {
-            return titleFieldPath != null;
-        }
-
-        boolean hasChangeLog() {
-            return changeLogGroupPath != null
-                    && changeDatetimePath != null
-                    && changeSummaryPath != null;
-        }
     }
 }

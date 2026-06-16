@@ -1,142 +1,130 @@
 package net.mgmtp.wiki12.operation;
 
 import com.googlecode.jsonrpc4j.JsonRpcParam;
-import com.mgmtp.a12.dataservices.query.QueryService;
-import com.mgmtp.a12.dataservices.query.QueryRoot;
-import com.mgmtp.a12.dataservices.query.constraint.search.SimpleSearchOperator;
+import com.mgmtp.a12.dataservices.document.DataServicesDocument;
+import com.mgmtp.a12.dataservices.document.DocumentReference;
+import com.mgmtp.a12.dataservices.document.persistence.IDocumentRepository;
 import com.mgmtp.a12.dataservices.rpc.RemoteOperation;
-import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.mgmtp.a12.kernel.md.document.apiV2.immutable.DocumentV2;
+import net.mgmtp.wiki12.slug.ModelConfigRegistry;
+import net.mgmtp.wiki12.slug.ModelDerivationConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static net.mgmtp.wiki12.operation.UnifiedSearchOperation.UNIFIED_SEARCH;
-
 /**
- * Custom JSON-RPC operation implementing wiki12's unified cross-content search as a
- * batched fan-out (architecture §4, findings §3): one {@code simple_search} QUERY per
- * content model over that model's derived {@code searchText} field, merged server-side
- * into one typed result list.
+ * Custom JSON-RPC operation: search across all wiki12 content models by the derived
+ * {@code searchText} blob, returning a merged hit list
+ * {@code [{kind, type, id, slug, title, snippet}]} (the shape the {@code wiki12 search}
+ * CLI consumes). The web client does its own batched stock-QUERY fan-out, so this op
+ * is primarily for the CLI.
  *
- * <p>Each hit is {@code {kind, type, id, slug, title, snippet}}. Optional {@code kind}
- * ({@code page} | {@code entity}) and {@code type} filters narrow which models are
- * queried — the same endpoint backs both the web search box and the CLI
- * ({@code wiki12 search}, {@code page search}, {@code entity search --type}).
+ * <p>Implementation mirrors {@link ResolveBySlugOperation}: scan documents via
+ * {@link IDocumentRepository} and filter in Java (a wiki's content set is small).
+ * Registered via {@code mgmtp.a12.dataservices.jsonRpc.allowedOperations}.
  */
-@Slf4j
-@RemoteOperation(name = UNIFIED_SEARCH)
+@RemoteOperation(name = UnifiedSearchOperation.UNIFIED_SEARCH)
 @Component
-@RequiredArgsConstructor
 public class UnifiedSearchOperation {
 
     public static final String UNIFIED_SEARCH = "UnifiedSearch";
+    private static final int SNIPPET_LEN = 160;
 
-    /**
-     * The content models spanned by unified search and their display metadata.
-     * {@code page} is the built-in kind; the rest are entity types.
-     * VERIFY: this registry is hardcoded for the baseline content set. Once models are
-     * runtime-deployable (ADR-0003), discover wiki12 content models dynamically (e.g.
-     * by a model-level {@code wiki12.content} annotation) instead of hardcoding.
-     */
-    private static final List<ContentModel> CONTENT_MODELS = List.of(
-            new ContentModel("Page_DM", "page", "page", "/Page/Title", "/Page/Slug", "/Page/searchText"),
-            new ContentModel("Person_DM", "entity", "person", "/Person/Name", "/Person/Slug", "/Person/searchText"),
-            new ContentModel("Film_DM", "entity", "film", "/Film/Title", "/Film/Slug", "/Film/searchText"),
-            new ContentModel("Location_DM", "entity", "location", "/Location/Name", "/Location/Slug", "/Location/searchText"));
+    private static final Logger log = LoggerFactory.getLogger(UnifiedSearchOperation.class);
 
-    private final QueryService queryService;
+    private final IDocumentRepository documentRepository;
+    private final ModelConfigRegistry registry;
 
-    /** One unified search hit. */
-    public record SearchHit(String kind, String type, String id, String slug, String title, String snippet) {
+    public UnifiedSearchOperation(IDocumentRepository documentRepository, ModelConfigRegistry registry) {
+        this.documentRepository = documentRepository;
+        this.registry = registry;
     }
 
-    /**
-     * Run a unified search.
-     *
-     * @param query the search term (min 3 chars per the simple_search default).
-     * @param kind  optional filter: {@code page} or {@code entity}.
-     * @param type  optional filter: a specific content type ({@code page}, {@code person}, …).
-     * @return merged, typed hits across the selected models.
-     */
-    public List<SearchHit> rpc(@NonNull @JsonRpcParam("query") String query,
-                               @JsonRpcParam("kind") String kind,
-                               @JsonRpcParam("type") String type) {
-        log.debug("{} called with query={}, kind={}, type={}", UNIFIED_SEARCH, query, kind, type);
-
-        List<SearchHit> results = new ArrayList<>();
-        for (ContentModel cm : CONTENT_MODELS) {
-            if (kind != null && !kind.equals(cm.kind())) {
-                continue;
-            }
-            if (type != null && !type.equals(cm.type())) {
-                continue;
-            }
-            results.addAll(searchModel(cm, query));
+    public List<Map<String, Object>> rpc(@JsonRpcParam("query") String query,
+                                         @JsonRpcParam(value = "kind") String kind,
+                                         @JsonRpcParam(value = "type") String type) {
+        log.debug("{} query={} kind={} type={}", UNIFIED_SEARCH, query, kind, type);
+        String needle = query == null ? "" : query.trim().toLowerCase();
+        List<Map<String, Object>> hits = new ArrayList<>();
+        if (needle.isEmpty()) {
+            return hits;
         }
-        return results;
-    }
 
-    private List<SearchHit> searchModel(ContentModel cm, String query) {
-        // One simple_search over the model's searchText blob. Restricting to the single
-        // searchText field (rather than omitting `fields`) keeps the regex cheap and the
-        // query shape identical across models (findings §3).
-        QueryRoot queryRoot = QueryRoot.builder()
-                .targetDocumentModel(cm.modelId())
-                .projectionName("document")
-                .fields(List.of(cm.titlePath(), cm.slugPath(), "/__meta/docRef"))
-                .constraint(SimpleSearchOperator.builder()
-                        .fields(List.of(cm.searchTextPath()))
-                        .value(query)
-                        .build())
-                .build();
-
-        List<SearchHit> hits = new ArrayList<>();
-        try {
-            // VERIFY: SimpleSearchOperator builder shape (fields/value) and the QueryPage
-            // row type. simple_search exists (dataservices §"Simple Search Operator"); the
-            // exact Java operator class name/builder is inferred from the ExactMatchOperator
-            // pattern in dev_tutorial_backend_custom_endpoint.md.
-            queryService.query(queryRoot, null).getContent().forEach(row -> {
-                String id = readDocRef(row);
-                String slug = readField(row, cm.slugPath());
-                String title = readField(row, cm.titlePath());
-                hits.add(new SearchHit(cm.kind(), cm.type(), id, slug, title, makeSnippet(title)));
-            });
-        } catch (RuntimeException e) {
-            // One model failing must not sink the whole fan-out — log and continue.
-            log.warn("Unified search failed for model {} — skipping", cm.modelId(), e);
+        for (String modelId : registry.contentModelIds()) {
+            String t = typeOf(modelId);
+            String k = "Page_DM".equals(modelId) ? "page" : "entity";
+            if (type != null && !type.isBlank() && !type.equalsIgnoreCase(t)) {
+                continue;
+            }
+            if (kind != null && !kind.isBlank() && !kind.equalsIgnoreCase(k)) {
+                continue;
+            }
+            ModelDerivationConfig config = registry.forModel(modelId);
+            for (DocumentReference ref : documentRepository.findAllDocRefsForModel(modelId)) {
+                DataServicesDocument dsDoc = documentRepository.findByDocumentReference(ref).orElse(null);
+                if (dsDoc == null) {
+                    continue;
+                }
+                DocumentV2 doc = dsDoc.getKernelDocument();
+                String searchText = str(fieldValue(doc, config.searchTextFieldPath()));
+                if (!searchText.toLowerCase().contains(needle)) {
+                    continue;
+                }
+                String rawId = doc.getId().orElse(ref.toString());
+                int sl = rawId.lastIndexOf('/');
+                String id = sl < 0 ? rawId : rawId.substring(sl + 1);
+                Map<String, Object> hit = new HashMap<>();
+                hit.put("kind", k);
+                hit.put("type", t);
+                hit.put("id", id);
+                hit.put("slug", str(fieldValue(doc, config.slugFieldPath())));
+                hit.put("title", title(doc, config));
+                hit.put("snippet", snippet(searchText));
+                hits.add(hit);
+            }
         }
         return hits;
     }
 
-    private String makeSnippet(String title) {
-        // Baseline: the snippet is just the title; a body-excerpt snippet (highlighting
-        // the match) is deferred. searchText is a normalized blob, not display text.
-        return title;
+    private String title(DocumentV2 doc, ModelDerivationConfig config) {
+        if (config.titleFieldPath() != null) {
+            String t = str(fieldValue(doc, config.titleFieldPath()));
+            if (!t.isEmpty()) {
+                return t;
+            }
+        }
+        if (!config.keyFieldPaths().isEmpty()) {
+            return str(fieldValue(doc, config.keyFieldPaths().get(0)));
+        }
+        return "";
     }
 
-    // VERIFY: extracting docRef + a projected scalar field from a QueryPage row. The
-    // tutorial casts rows to DocumentTreeResult and calls getDocRef(); reading a
-    // projected field value is not shown. Implement against the live row type.
-    private String readDocRef(Object row) {
-        return null;
+    private static String snippet(String searchText) {
+        return searchText.length() <= SNIPPET_LEN ? searchText : searchText.substring(0, SNIPPET_LEN) + "…";
     }
 
-    private String readField(Object row, String path) {
-        return null;
+    private static Object fieldValue(DocumentV2 doc, String path) {
+        if (path == null) {
+            return null;
+        }
+        try {
+            return doc.fieldValue(path);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
-    /** Static metadata for one searchable content model. */
-    private record ContentModel(
-            String modelId,
-            String kind,
-            String type,
-            String titlePath,
-            String slugPath,
-            String searchTextPath) {
+    private static String str(Object v) {
+        return v == null ? "" : v.toString();
+    }
+
+    private static String typeOf(String modelId) {
+        String t = modelId.endsWith("_DM") ? modelId.substring(0, modelId.length() - 3) : modelId;
+        return t.toLowerCase();
     }
 }
