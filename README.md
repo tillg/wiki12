@@ -116,6 +116,18 @@ Each entry is labelled **BUG:** (intended behaviour that's broken) or **FEATURE:
 
 ### Open
 
+- **BUG: Can't enter newlines in the Milkdown body editor.** When editing a page's
+  content, pressing <kbd>Return</kbd> doesn't take — the new line immediately
+  disappears and the cursor jumps back to the end of the previous line. Suspected
+  cause: the controlled value-sync effect in `client/src/widgets/MilkdownEditor.tsx`
+  re-parses `props.value` and `replaceWith`s the whole doc on every change; pressing
+  Enter fires `markdownUpdated` → `onChange` → a new `props.value`, and the
+  serialized-equality guard (`current === props.value`) likely doesn't match for the
+  transient empty paragraph, so the doc is rebuilt and the cursor resets. Fix the sync
+  so local edits (especially structural ones like new paragraphs) don't trigger a
+  full re-parse/replace — e.g. only re-sync on a genuinely external value change, or
+  diff/patch instead of replacing the whole document.
+
 - **Slug uniqueness under concurrency.** The `_N` collision suffix is derived by an
   in-transaction scan of existing slugs, but **without** the planned Postgres advisory
   lock (`specs/changes/basic_setup/spike-slug-concurrency.md`). Two *simultaneous*
