@@ -7,12 +7,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { generateFormModel, unresolvedRefs } from "../src/generate.ts";
-import type { DMElement, DocumentModel } from "../src/types.ts";
+import { controlsWithLayout, generateFormModel, unresolvedRefs } from "../src/generate.ts";
+import type { DMElement, DocumentModel, FormModel } from "../src/types.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..", "..");
 const DM_DIR = join(REPO, "models", "document-models");
+const FM_DIR = join(REPO, "models", "form-models");
 
 function loadDM(name: string): DocumentModel {
   return JSON.parse(readFileSync(join(DM_DIR, name), "utf8")) as DocumentModel;
@@ -120,6 +121,18 @@ test("every generated Control.elementRef resolves (unresolvedRefs empty)", () =>
     const dm = loadDM(name);
     const fm = generateFormModel(dm);
     assert.deepEqual(unresolvedRefs(dm, fm), [], `${name}: no unresolved refs`);
+  }
+});
+
+test("no on-disk FM carries a per-Control layout (form engine ignores it → field collapses)", () => {
+  for (const name of ALL) {
+    const fmName = name.replace(/_DM\.json$/, "_FM.json");
+    const fm = JSON.parse(readFileSync(join(FM_DIR, fmName), "utf8")) as FormModel;
+    assert.deepEqual(
+      controlsWithLayout(fm), [],
+      `${fmName}: Controls must not carry 'layout' — the form engine applies width `
+        + `from the Row/cell structure; a per-Control layout collapses the field to size 0`,
+    );
   }
 });
 

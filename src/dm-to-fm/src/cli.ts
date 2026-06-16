@@ -1,9 +1,10 @@
 // CLI: generate a default Form Model from one or more Document Model JSON files.
 //
-//   node --experimental-strip-types src/dm-to-fm/src/cli.ts <DM.json…> [--out <dir>]
+//   node --experimental-strip-types src/dm-to-fm/src/cli.ts <DM.json…> [--out <dir>] [--force]
 //
 // Writes <X>_FM.json next to each input (or into --out dir). Verifies that every
-// generated control resolves to a DM field.
+// generated control resolves to a DM field. An existing form model annotated
+// wiki12.formModel="explicit" is kept (not regenerated) UNLESS --force is given.
 
 import process from "node:process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -25,13 +26,15 @@ function isExplicit(path: string): boolean {
 function main(argv: string[]): number {
   const args = argv.slice(2);
   let outDir: string | undefined;
+  let force = false;
   const inputs: string[] = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--out") { outDir = args[++i]; }
+    else if (args[i] === "--force") { force = true; }
     else inputs.push(args[i]);
   }
   if (inputs.length === 0) {
-    console.error("usage: cli.ts <DocumentModel.json…> [--out <dir>]");
+    console.error("usage: cli.ts <DocumentModel.json…> [--out <dir>] [--force]");
     return 2;
   }
 
@@ -53,8 +56,8 @@ function main(argv: string[]): number {
     const dir = outDir ?? dirname(input);
     mkdirSync(dir, { recursive: true });
     const outPath = join(dir, `${fm.header.id}.json`);
-    if (existsSync(outPath) && isExplicit(outPath)) {
-      console.log(`• ${basename(input)} → ${outPath}  (kept explicit form model, not regenerated)`);
+    if (!force && existsSync(outPath) && isExplicit(outPath)) {
+      console.log(`• ${basename(input)} → ${outPath}  (kept explicit form model, not regenerated; use --force to overwrite)`);
       continue;
     }
     writeFileSync(outPath, JSON.stringify(fm, null, 2) + "\n");

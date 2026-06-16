@@ -31,6 +31,11 @@ KNOWN_FIELD_TYPES = {
     "DateTimeType", "TimeType", "DateFragmentType", "DateRangeType",
     "EnumerationType", "CustomType", "TypeDefinitionType",
 }
+# Field types whose Data Service deserializer (kernel-md-serializer FieldtypeDeserializer)
+# has NO builder fallback for a missing nested config block — they are read via
+# treeToValue(node.get("<Type>"), <Type>.class), so a bare {"type":"<Type>"} yields a
+# null fieldType and crashes model import. They MUST carry a nested config object.
+NESTED_CONFIG_REQUIRED = {"DateType", "DateTimeType", "TimeType"}
 # Element types confirmed from reference models.
 KNOWN_ELEMENT_TYPES = {"Group", "Field", "Rule", "Attachment", "MultiSelect", "Include"}
 
@@ -121,9 +126,23 @@ def validate(path, allowed_versions):
             if t and t not in e:
                 errs.append(f"element {loc}: missing '{t}' detail object")
             if t == "Field":
-                ft = e.get("Field", {}).get("fieldType", {}).get("type")
+                fieldtype = e.get("Field", {}).get("fieldType", {})
+                ft = fieldtype.get("type")
                 if ft not in KNOWN_FIELD_TYPES:
                     errs.append(f"field {loc}: unknown fieldType {ft!r}")
+                # The Data Service's FieldtypeDeserializer builds a default for a
+                # bare StringType/NumberType, but date-family types are read via
+                # treeToValue(node.get("<Type>"), <Type>.class) with NO null guard —
+                # a missing nested config block deserializes to null and the whole
+                # model import crashes ("fieldType is null"). Require the block.
+                elif ft in NESTED_CONFIG_REQUIRED and not isinstance(
+                    fieldtype.get(ft), dict
+                ):
+                    errs.append(
+                        f"field {loc}: {ft} needs a nested {ft!r} config object "
+                        f"(e.g. {{\"type\":{ft!r},{ft!r}:{{}}}}); a bare "
+                        f"{{\"type\":{ft!r}}} deserializes to null in the Data Service"
+                    )
     dups = [i for i, n in ids.items() if n > 1]
     if dups:
         errs.append(f"duplicate element ids within model: {dups}")

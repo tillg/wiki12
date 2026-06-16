@@ -25,10 +25,6 @@
       {
         "name": "roles",
         "value": "user"
-      },
-      {
-        "name": "wiki12.formModel",
-        "value": "explicit"
       }
     ],
     "modelReferences": [
@@ -143,7 +139,7 @@
             "screenElements": [
               {
                 "type": "ControlGrid",
-                "id": "controlgrid-G1-meta",
+                "id": "controlgrid-G1",
                 "name": "CG1",
                 "layout": {
                   "lg": "12"
@@ -157,43 +153,19 @@
                       {
                         "type": "Control",
                         "id": "control-F1",
-                        "elementRef": "F1",
-                        "layout": {
-                          "lg": "8"
-                        }
-                      },
-                      {
-                        "type": "Control",
-                        "id": "control-F2",
-                        "elementRef": "F2",
-                        "layout": {
-                          "lg": "4"
-                        }
+                        "elementRef": "F1"
                       }
                     ]
-                  }
-                ]
-              },
-              {
-                "type": "ControlGrid",
-                "id": "controlgrid-G1-body",
-                "name": "CG2",
-                "layout": {
-                  "lg": "12"
-                },
-                "row": [
+                  },
                   {
                     "type": "Row",
-                    "id": "row-G1-body",
-                    "name": "rBody",
+                    "id": "row-G1-2",
+                    "name": "r2",
                     "cell": [
                       {
                         "type": "Control",
                         "id": "control-F3",
-                        "elementRef": "F3",
-                        "layout": {
-                          "lg": "12"
-                        }
+                        "elementRef": "F3"
                       }
                     ]
                   }
@@ -205,17 +177,7 @@
       }
     ],
     "fieldConfiguration": {
-      "field": [
-        {
-          "elementRef": "F2",
-          "readOnly": true
-        },
-        {
-          "elementRef": "F3",
-          "widget": "markdownEditor",
-          "fullWidth": true
-        }
-      ]
+      "field": []
     },
     "groupConfiguration": {},
     "defaults": {

@@ -177,6 +177,23 @@ export function generateFormModel(dm: DocumentModel, opts: GenerateOptions = {})
   };
 }
 
+// The form engine (formengine-core 38.x) applies column widths from the Row/cell
+// structure, NOT from a per-Control `layout`. A `layout` on a Control cell is
+// silently ignored and the field's grid column collapses to size 0 (the label
+// then wraps one character per line). The generator never emits one; this guards
+// hand-edited FMs against re-introducing it. Returns the ids of offending Controls.
+export function controlsWithLayout(fm: FormModel): string[] {
+  const bad: string[] = [];
+  for (const screen of fm.content.screens)
+    for (const section of screen.screenElements)
+      for (const grid of section.screenElements)
+        for (const row of grid.row)
+          for (const cell of row.cell)
+            if ((cell as { layout?: unknown }).layout !== undefined)
+              bad.push(cell.id);
+  return bad;
+}
+
 /** Every Control.elementRef must resolve to a Field id in the DM. Returns unresolved refs. */
 export function unresolvedRefs(dm: DocumentModel, fm: FormModel): string[] {
   const fieldIds = new Set<string>();

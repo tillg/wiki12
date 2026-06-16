@@ -44,5 +44,14 @@ check("flags missing createdOn", "createdOn" in blob)
 check("flags missing Title", "Title" in blob)
 check("flags missing changeLog", "changeLog" in blob)
 
+# (c) a model with a bare date-family fieldType (no nested config block) is rejected —
+# it would deserialize to a null fieldType and crash Data Service model import.
+bare = os.path.join(HERE, "test", "bare_datetime_DM.json")
+errs, _ = validate(bare, allowed)
+blob = " | ".join(errs)
+check("bare_datetime_DM rejected", bool(errs))
+check("flags bare DateTimeType needs nested block",
+      "DateTimeType needs a nested" in blob)
+
 print(f"\n{'FAIL' if failures else 'OK'} — {len(failures)} failed check(s)")
 sys.exit(1 if failures else 0)

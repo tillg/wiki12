@@ -51,9 +51,13 @@ check:
 validate-models:
     python3 src/model_tools/validate.py models/document-models/*.json
 
-# (re)generate default form models from document models
+# (re)generate default form models from document models (keeps wiki12.formModel="explicit" ones)
 generate-forms:
     node --experimental-strip-types src/dm-to-fm/src/cli.ts models/document-models/*_DM.json --out models/form-models
+
+# like generate-forms but OVERWRITES even explicit (hand-tuned) form models
+generate-forms-force:
+    node --experimental-strip-types src/dm-to-fm/src/cli.ts models/document-models/*_DM.json --out models/form-models --force
 
 # --- components (offline tests) -------------------------------------------
 

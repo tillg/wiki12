@@ -226,7 +226,10 @@
                 ],
                 "Field": {
                   "fieldType": {
-                    "type": "DateTimeType"
+                    "type": "DateTimeType",
+                    "DateTimeType": {
+                      "format": "yyyy-MM-dd'T'HH:mm:ss"
+                    }
                   },
                   "label": [
                     {
@@ -265,7 +268,10 @@
                       ],
                       "Field": {
                         "fieldType": {
-                          "type": "DateTimeType"
+                          "type": "DateTimeType",
+                          "DateTimeType": {
+                            "format": "yyyy-MM-dd'T'HH:mm:ss"
+                          }
                         },
                         "label": [
                           {

@@ -88,7 +88,8 @@ just seed           # sample pages + entities (needs a running stack)
 
 # Models
 just validate-models   # python3 src/model_tools/validate.py on document-models/*.json
-just generate-forms    # regenerate default form models from *_DM.json
+just generate-forms    # regenerate default form models from *_DM.json (keeps explicit FMs)
+just generate-forms-force  # same, but OVERWRITE even wiki12.formModel="explicit" FMs
 
 # Tests — `just test` runs every OFFLINE test + model validation:
 just test              # = validate-models + test-version + test-forms + test-cli + test-lifecycle
@@ -241,11 +242,48 @@ work alike.)
   one-content-mechanism model (0004), build/deploy structure (0005), the standard
   content envelope (0006), or the web client on the A12 Client framework (0007).
 
-## Web-app testing (global rule)
+## Never claim done without an end-to-end check through the real UI
 
-After building or modifying the web client, start the dev server, open it in the
-browser, and verify it renders before declaring done. Save all browser-agent
-artifacts (screenshots, snapshots, logs) under `tmp/` (already gitignored).
+"The server is healthy" / "the API responds" / "the page serves a 200" / "tests
+pass" is **NOT done** for any change that touches a user-facing flow. Those signals
+all stayed green the day the create form rendered every field collapsed to a 1-px
+column (a form-model layout bug): the data-service started, `/` returned 200, and
+the offline suite passed — because nothing had actually *opened the form*.
+
+Before telling the user a change is done, you MUST drive the change through the
+**real, running UI** the way a user would, and **observe the rendered result** —
+not a server log, not a curl, not the app shell, not the login screen:
+
+1. **Bring up the full stack** the change runs in (`just dev` / `docker compose up`)
+   and wait until every service is healthy.
+2. **Authenticate** — log in (dev user `admin` / `admin`). The login page is not
+   the app; a screenshot of it proves nothing. Get past auth.
+3. **Exercise the actual flow you changed, end to end.** Touched models, forms, or
+   the client? Open the affected screen (e.g. `/create?type=Page`, an edit screen,
+   a view) and go through Browse → Create → Save → View / Edit / Delete as
+   relevant. A model or data-service change is only verified once a document is
+   created/read **through the client**, not just imported at startup.
+4. **Inspect the rendered DOM, not just a screenshot.** Confirm the things a
+   screenshot can hide: every expected field is present, each control has non-zero
+   width and the right widget, no field collapsed, no console errors, the data
+   round-trips. Use `browser_evaluate` to assert widths/widget types when layout
+   is in question.
+5. If a token expires after a service restart, **re-authenticate** and retry —
+   a 401 from a stale session is not "the feature works."
+
+**To check data existence or structure, go through the client or the `wiki12`
+CLI — never hand-roll raw JSON-RPC.** Those two paths encode the real contract
+(op names, param shapes, slug/ID resolution, the document envelope); a hand-written
+`fetch` to `/api/v2/rpc` will get param shapes wrong and give misleading errors
+(a `-32602 "method parameters invalid"` from your own bad call is not a finding
+about the app). Use `wiki12 page/entity read …` (or `search`) to read back what a
+flow wrote, and read its emitted A12 document to confirm the derived envelope
+(`Title`, `Slug`, `CreatedOn`, the `Changes` log).
+
+If you cannot complete this loop (no stack, blocked on auth, etc.), say so plainly
+and state exactly what remains unverified — never imply a flow works when you only
+checked a proxy for it. Save all browser-agent artifacts (screenshots, snapshots,
+logs) under `tmp/` (already gitignored).
 
 **Playwright screenshots must always be written to `tmp/`** (which is gitignored)
 — never to the repo root or any tracked path. Verify `tmp/` is in `.gitignore`

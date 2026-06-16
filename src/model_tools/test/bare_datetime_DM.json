@@ -1,6 +1,6 @@
 {
   "header": {
-    "id": "Page_DM",
+    "id": "bare_datetime_DM",
     "modelType": "document",
     "modelVersion": "28.4.0",
     "locales": [
@@ -26,7 +26,7 @@
   },
   "content": {
     "modelInfo": {
-      "name": "Page_DM",
+      "name": "bare_datetime_DM",
       "immutable": false
     },
     "modelConfig": {
@@ -174,10 +174,7 @@
                 ],
                 "Field": {
                   "fieldType": {
-                    "type": "DateTimeType",
-                    "DateTimeType": {
-                      "format": "yyyy-MM-dd'T'HH:mm:ss"
-                    }
+                    "type": "DateTimeType"
                   },
                   "label": [
                     {
@@ -228,7 +225,7 @@
                           },
                           {
                             "locale": "de",
-                            "text": "Geändert am"
+                            "text": "Ge\u00e4ndert am"
                           }
                         ]
                       }
