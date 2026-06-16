@@ -16,6 +16,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, 
 import { commonmark } from "@milkdown/preset-commonmark";
 import { nord } from "@milkdown/theme-nord";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
+import { shouldReplaceFromExternal } from "../lib/markdownSync";
 
 export interface MilkdownEditorProps {
   /** Current markdown string (the form field value). */
@@ -37,6 +38,10 @@ export function MilkdownEditor(props: MilkdownEditorProps): ReactElement {
   // Keep the latest read-only flag readable from the editor's editable callback.
   const readOnlyRef = useRef(props.readOnly);
   readOnlyRef.current = props.readOnly;
+  // The markdown this editor last emitted. When props.value comes back equal to it,
+  // it's the echo of a local edit — never re-parse/replace (that would reset the
+  // caret, e.g. swallow a newly typed paragraph / Return key).
+  const lastEmittedRef = useRef<string | null>(null);
 
   // Create the editor once on mount.
   useEffect(() => {
@@ -56,6 +61,7 @@ export function MilkdownEditor(props: MilkdownEditorProps): ReactElement {
           editable: () => !readOnlyRef.current,
         }));
         ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
+          lastEmittedRef.current = markdown;
           onChangeRef.current(markdown);
         });
       })
@@ -86,18 +92,22 @@ export function MilkdownEditor(props: MilkdownEditorProps): ReactElement {
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
+    const incoming = props.value ?? "";
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
       const serializer = ctx.get(serializerCtx);
-      const current = serializer(view.state.doc);
-      // Skip when the doc already serializes to the incoming markdown — this also
-      // covers the echo of the user's own edits, so we don't reset the cursor.
-      if (current === (props.value ?? "")) return;
+      // Re-parse/replace ONLY for a genuinely external value. The echo of the user's
+      // own edits differs only by trailing whitespace (editor emits "A\n"; the form
+      // layer trims to "A"), and replacing then would swallow a just-typed paragraph
+      // and reset the caret. shouldReplaceFromExternal ignores trailing whitespace.
+      if (!shouldReplaceFromExternal(incoming, lastEmittedRef.current, serializer(view.state.doc))) {
+        return;
+      }
       // PARSE the markdown into a ProseMirror document and replace the content. Using
       // schema.text() here would insert the markdown as LITERAL text, which Milkdown
       // then re-escapes every cycle (runaway `\*\*…`). parserCtx round-trips cleanly.
       const parser = ctx.get(parserCtx);
-      const parsed = parser(props.value ?? "");
+      const parsed = parser(incoming);
       if (!parsed) return;
       const { state } = view;
       view.dispatch(state.tr.replaceWith(0, state.doc.content.size, parsed.content));
