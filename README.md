@@ -108,6 +108,43 @@ wiki12 migrate person --from 1 --to 2 --dry-run
 | CLI | `wiki12` (Node/TypeScript) |
 | Orchestration | Docker Compose |
 
+## Known issues & TODO
+
+A running list of things to look at — found while dogfooding the web client.
+Each entry is labelled **BUG:** (intended behaviour that's broken) or **FEATURE:**
+(capability not yet built/finished). Newest first; move items out as they're fixed.
+
+### Open
+
+- **Slug uniqueness under concurrency.** The `_N` collision suffix is derived by an
+  in-transaction scan of existing slugs, but **without** the planned Postgres advisory
+  lock (`specs/changes/basic_setup/spike-slug-concurrency.md`). Two *simultaneous*
+  creates of the same name could still get the same slug. Fine for single-writer/dev
+  use; wire the advisory lock for production concurrency.
+
+### Fixed (2026-06-16, see `AUTONOMOUS-DECISIONS.md`)
+
+The four items below were fixed and verified end-to-end. Root cause of #2/#3: the
+custom wiki12 server module was **never compiled into the deployed image** (the
+Dockerfile shipped the stock A12 fatjar). It's now compiled against the fatjar's own
+A12 jars and merged in via a Spring Boot AutoConfiguration (`server/Dockerfile`).
+
+- **BUG (fixed): Read mode is now read-only.** View renders every field read-only
+  (standard inputs + the Milkdown body). The read-only state is set via the
+  activity-creation `uiState` slice (`routing.ts`) — the prior code used the wrong
+  slice key (`ui`), so it was silently ignored.
+- **BUG (fixed): The standard content envelope is derived.** Create/update now stamp
+  `Slug`, `searchText`, `CreatedOn` (immutable), a derived `Title` (entities), and an
+  append-only `Changes` log — for Pages **and** entities. The listener reads its config
+  from the DM JSON and writes via the immutable `DocumentV2` API.
+- **BUG (fixed): Slug-based read works.** `ResolveBySlug` resolves a slug to
+  `{type, id, slug, docRef}` via a repository scan; `UnifiedSearch` returns ranked hits
+  for the CLI. (The web client searches via the stock `QUERY` `simple_search` on the
+  now-derived `searchText`.)
+- **FEATURE (done): Milkdown markdown editor.** The `Body`/`Description` field renders
+  the Milkdown editor (editable in create/edit, read-only in view), resolving the bound
+  field name from the control's `elementPath`.
+
 ## Developer skills
 
 This repo ships a set of [agent skills](https://github.com/mattpocock/skills) by
