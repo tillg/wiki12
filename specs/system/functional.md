@@ -92,7 +92,7 @@ sequenceDiagram
     W->>S: ADD_DOCUMENT { documentModelName, locale, document }
     S->>S: derive slug from Key Fields, ensure unique, assign Technical ID
     S-->>W: { docRef }
-    W-->>U: show saved entity (id; slug on next read)
+    W-->>U: show saved entity (id, slug on next read)
 ```
 
 ### Find then read (either client)

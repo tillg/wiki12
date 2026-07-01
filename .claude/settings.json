@@ -1,0 +1,11 @@
+{
+  "extraKnownMarketplaces": {
+    "a12-plugin-marketplace": {
+      "source": {
+        "source": "url",
+        "url": "https://bitbucket.mgm-tp.com/scm/a12/claude-plugin-marketplace.git"
+      },
+      "autoUpdate": true
+    }
+  }
+}
